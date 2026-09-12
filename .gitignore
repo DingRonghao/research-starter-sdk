@@ -1,0 +1,32 @@
+.venv/
+node_modules/
+.runtime/
+config.local.json
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+/tmp/
+
+# Keep the Inbox/Output product structure and selected public examples, while
+# leaving any additional local projects on disk but outside Git.
+/Inbox/**
+!/Inbox/paper-guide/
+!/Inbox/paper-guide/public-sample/
+!/Inbox/paper-guide/public-sample/**
+!/Inbox/research-note/
+!/Inbox/research-note/public-sample/
+!/Inbox/research-note/public-sample/**
+!/Inbox/research-slides/
+!/Inbox/research-slides/public-sample/
+!/Inbox/research-slides/public-sample/**
+/Output/**
+!/Output/paper-guide/
+!/Output/paper-guide/public-sample/
+!/Output/paper-guide/public-sample/**
+!/Output/research-note/
+!/Output/research-note/public-sample/
+!/Output/research-note/public-sample/**
+!/Output/research-slides/
+!/Output/research-slides/public-sample/
+!/Output/research-slides/public-sample/**

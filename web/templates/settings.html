@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<a class="back" href="/">← 返回</a><h1>Settings</h1>
+<form id="settings-form" class="settings-section">
+<h2>文件位置</h2><p class="muted">可以填写绝对路径，也可以填写相对于项目根目录的路径。保存后立即用于后续任务，原配置自动备份，已有文件不会搬迁。基础 Python 只在项目 `.venv` 不存在时用于首次创建环境，不会改变当前 `.venv`。</p>
+<p class="muted">iCloud 素材入口、iCloud 成品出口以及两项云端 Obsidian 路径均为可选项。不使用时留空即可；云端 Obsidian 的两项路径必须同时填写或同时留空。本地上传、本地输出和项目本地 Obsidian 不受影响。</p>
+{% for key,value in settings.items() %}<label>{{ labels[key] }}<input name="{{ key }}" value="{{ value }}" {% if key not in optional_paths %}required{% endif %} spellcheck="false" placeholder="{% if key in optional_paths %}留空表示不启用{% endif %}"></label>{% endfor %}
+<button type="submit">保存设置</button><p id="settings-message" role="status"></p></form>
+<section class="control-panel">
+  <div><h2>Codex 账户状态</h2><p class="muted">模型、默认推理等级与账户用量由当前登录的 Codex 运行时提供。</p></div>
+  <pre id="codex-status">正在读取…</pre>
+  <button id="refresh-codex">刷新</button>
+  <p class="muted">登录在 OpenAI 官方页面完成。若此处使用与 Codex 桌面端相同的账户目录，重新登录也会影响共享该目录的应用。</p>
+  <button id="login-codex">登录 / 重新登录其他账户</button>
+  <div id="login-panel" hidden><p id="login-state" role="status"></p><a id="login-link" target="_blank" rel="noopener noreferrer" hidden>打开 OpenAI 登录页面</a><button id="cancel-login" class="secondary">取消登录</button></div>
+</section>
+{% endblock %}
+{% block scripts %}<script type="module" src="/static/settings.js?v={{ asset_version }}"></script>
+<script>
+async function loadStatus(refresh = false) {
+  const target = document.querySelector('#codex-status');
+  target.textContent = '正在读取…';
+  const response = await fetch(`/api/codex/status${refresh ? '?refresh=true' : ''}`);
+  if (!response.ok) { target.textContent = '当前无法读取 Codex 状态。'; return; }
+  const status = await response.json();
+  const visible = status.models.data.filter(model => !model.hidden);
+  const defaultModel = visible.find(model => model.isDefault);
+  const limits = status.usage.rateLimits || {};
+  const line = (label, value) => value ? `${label}：剩余 ${Math.max(0, 100-value.usedPercent)}%，重置 ${value.resetsAt ? new Date(value.resetsAt*1000).toLocaleString() : '未知'}` : `${label}：不可用`;
+  const account = status.account?.account;
+  target.textContent = `账户：${account ? account.email || account.type || '已登录' : '未登录'}\n默认模型：${defaultModel?.displayName || '未知'}\n默认推理等级：${defaultModel?.defaultReasoningEffort || '未知'}\n可选模型：${visible.map(model => model.displayName).join('、')}\n${line('5 小时', limits.primary)}\n${line('一周', limits.secondary)}`;
+}
+document.querySelector('#refresh-codex').addEventListener('click', () => loadStatus(true));
+loadStatus();
+</script>
+{% endblock %}

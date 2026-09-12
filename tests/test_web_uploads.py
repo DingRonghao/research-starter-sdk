@@ -1,0 +1,349 @@
+import asyncio
+import io
+import tempfile
+import unittest
+import json
+from dataclasses import replace
+from pathlib import Path
+
+from fastapi import HTTPException, UploadFile
+from fastapi.testclient import TestClient
+
+import web.app as web_app
+import runner.tasks as runner_tasks
+from runner.note_store import save_local
+
+
+class FolderUploadTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.original_settings = web_app.settings
+        self.original_execute = web_app._execute
+        web_app.settings = replace(
+            self.original_settings,
+            project_root=self.root,
+            local_jobs=self.root / "jobs",
+            icloud_inbox_root=self.root / "icloud" / "Inbox",
+            obsidian_vault=self.root / "vault",
+            obsidian_write_root=self.root / "vault" / "notes",
+            local_obsidian_vault=self.root / "local-vault",
+            obsidian_exe=self.root / "Obsidian.exe",
+        )
+        web_app.settings.local_jobs.mkdir(parents=True)
+        web_app.settings.obsidian_write_root.mkdir(parents=True)
+        web_app.settings.obsidian_exe.write_bytes(b"test fixture")
+        for task in ("paper-guide", "research-note", "research-slides"):
+            (web_app.settings.icloud_inbox_root / task).mkdir(parents=True)
+
+        async def no_execute(*_args, **_kwargs) -> None:
+            return None
+
+        web_app._execute = no_execute
+
+    def tearDown(self) -> None:
+        web_app._execute = self.original_execute
+        web_app.settings = self.original_settings
+        self.temporary.cleanup()
+
+    def upload(self, name: str, content: bytes = b"test") -> UploadFile:
+        return UploadFile(filename=name, file=io.BytesIO(content))
+
+    def test_research_note_preserves_one_folder_tree(self) -> None:
+        sources = asyncio.run(
+            web_app._save_uploads(
+                "research-note",
+                [
+                    self.upload("materials/papers/a.txt", b"A"),
+                    self.upload("materials/images/b.png", b"B"),
+                ],
+            )
+        )
+        self.assertEqual(["materials"], [source.name for source in sources])
+        self.assertEqual(b"A", (sources[0] / "papers" / "a.txt").read_bytes())
+        self.assertEqual(b"B", (sources[0] / "images" / "b.png").read_bytes())
+
+    def test_research_slides_rejects_loose_files(self) -> None:
+        with self.assertRaisesRegex(HTTPException, "uploaded folder"):
+            asyncio.run(
+                web_app._save_uploads(
+                    "research-slides",
+                    [self.upload("a.txt"), self.upload("b.txt")],
+                )
+            )
+
+    def test_folder_upload_rejects_multiple_roots(self) -> None:
+        with self.assertRaisesRegex(HTTPException, "one uploaded folder"):
+            asyncio.run(
+                web_app._save_uploads(
+                    "research-note",
+                    [self.upload("one/a.txt"), self.upload("two/b.txt")],
+                )
+            )
+
+    def test_upload_rejects_parent_traversal(self) -> None:
+        with self.assertRaisesRegex(HTTPException, "Invalid upload path"):
+            asyncio.run(
+                web_app._save_uploads(
+                    "research-note",
+                    [self.upload("materials/../outside.txt")],
+                )
+            )
+
+    def test_endpoint_requires_note_material_folder_but_not_text(self) -> None:
+        with TestClient(web_app.app) as client:
+            missing = client.post("/api/jobs", data={"task": "research-note"})
+            self.assertEqual(400, missing.status_code)
+
+            response = client.post(
+                "/api/jobs",
+                data={"task": "research-note", "instructions": ""},
+                files=[
+                    ("files", ("materials/a.txt", b"A", "text/plain")),
+                    ("files", ("materials/sub/b.txt", b"B", "text/plain")),
+                ],
+            )
+        self.assertEqual(202, response.status_code)
+        job_id = response.json()["job_id"]
+        job_input = web_app.settings.local_jobs / job_id / "input" / "materials"
+        self.assertEqual(b"A", (job_input / "a.txt").read_bytes())
+        self.assertEqual(b"B", (job_input / "sub" / "b.txt").read_bytes())
+
+    def test_endpoint_rejects_icloud_file_for_folder_task(self) -> None:
+        loose_file = web_app.settings.icloud_inbox_root / "research-slides" / "loose.txt"
+        loose_file.write_text("not a folder", encoding="utf-8")
+        with TestClient(web_app.app) as client:
+            response = client.post(
+                "/api/jobs",
+                data={
+                    "task": "research-slides",
+                    "icloud_item": "loose.txt",
+                    "instructions": "Make slides",
+                },
+            )
+        self.assertEqual(400, response.status_code)
+        self.assertIn("material folder", response.json()["detail"])
+
+    def test_note_attachments_are_copied_only_to_local_vault(self) -> None:
+        job_root = web_app.settings.local_jobs / "attachment-job"
+        (job_root / "input" / "materials" / "figures").mkdir(parents=True)
+        (job_root / "temp").mkdir()
+        (job_root / "output").mkdir()
+        (job_root / "input" / "materials" / "figures" / "linear.gif").write_bytes(b"GIF89a")
+        (job_root / "input" / "materials" / "notes.txt").write_text("text", encoding="utf-8")
+        job = web_app.JobWorkspace(job_root)
+        (job_root / "job.json").write_text(json.dumps({
+            "task": "research-note", "note_target": "notes/Research/test.md",
+            "note_mode": "create", "note_preview": "Before\n\n![[materials/figures/linear.gif]]\n\nAfter",
+        }), encoding="utf-8")
+        state = save_local(job, web_app.settings)
+        self.assertEqual(
+            ["notes/_attachments/Research-Starter/attachment-job/materials/figures/linear.gif"],
+            state["note_attachments"],
+        )
+        copied = web_app.settings.local_obsidian_vault / state["note_attachments"][0]
+        self.assertEqual(b"GIF89a", copied.read_bytes())
+        self.assertFalse((web_app.settings.obsidian_write_root / "_attachments").exists())
+
+    def make_renderable_job(self, job_id: str, task: str) -> Path:
+        root = web_app.settings.local_jobs / job_id
+        for name in ("input", "temp", "output"):
+            (root / name).mkdir(parents=True, exist_ok=True)
+        (root / "job.json").write_text(
+            json.dumps({
+                "job_id": job_id,
+                "task": task,
+                "status": "completed",
+                "stage": "completed",
+                "outputs": [],
+                "final_response": "done",
+            }),
+            encoding="utf-8",
+        )
+        return root
+
+    def test_result_pages_render_only_task_specific_actions(self) -> None:
+        self.make_renderable_job("paper", "paper-guide")
+        self.make_renderable_job("note", "research-note")
+        self.make_renderable_job("slides", "research-slides")
+        with TestClient(web_app.app) as client:
+            paper = client.get("/jobs/paper").text
+            note = client.get("/jobs/note").text
+            slides = client.get("/jobs/slides").text
+        self.assertIn('id="paper-chat"', paper)
+        self.assertIn('id="pdf-viewer"', paper)
+        self.assertNotIn('id="save-note"', paper)
+        self.assertIn('id="save-note"', note)
+        self.assertIn('id="markdown-preview"', note)
+        self.assertNotIn('id="paper-chat"', note)
+        self.assertNotIn('id="save-note"', slides)
+        self.assertNotIn('id="paper-chat"', slides)
+        self.assertIn('id="pptx-viewer"', slides)
+
+    def test_job_star_and_exact_delete_do_not_touch_siblings(self) -> None:
+        self.make_renderable_job("keep", "paper-guide")
+        self.make_renderable_job("remove", "paper-guide")
+        with TestClient(web_app.app) as client:
+            starred = client.post("/api/jobs/keep/star")
+            deleted = client.delete("/api/jobs/remove")
+        self.assertTrue(starred.json()["starred"])
+        self.assertEqual(200, deleted.status_code)
+        self.assertTrue((web_app.settings.local_jobs / "keep" / "job.json").is_file())
+        self.assertFalse((web_app.settings.local_jobs / "remove").exists())
+
+    def test_job_title_can_be_renamed_safely(self) -> None:
+        self.make_renderable_job("rename", "paper-guide")
+        with TestClient(web_app.app) as client:
+            response = client.post("/api/jobs/rename/title", data={"title": "  中文 项目标题  "})
+            rejected = client.post("/api/jobs/rename/title", data={"title": "x" * 41})
+        self.assertEqual("中文 项目标题", response.json()["title"])
+        self.assertEqual(400, rejected.status_code)
+
+    def test_job_input_is_available_inline(self) -> None:
+        root = self.make_renderable_job("reader", "paper-guide")
+        source = root / "input" / "paper.pdf"
+        source.write_bytes(b"%PDF-test")
+        with TestClient(web_app.app) as client:
+            response = client.get("/jobs/reader/input/paper.pdf")
+            state = client.get("/api/jobs/reader").json()
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("inline; filename=\"paper.pdf\"", response.headers["content-disposition"])
+        self.assertEqual("paper.pdf", state["paper_file"])
+
+    def test_save_note_is_mechanical_and_local(self) -> None:
+        root = self.make_renderable_job("save-with-media", "research-note")
+        media = root / "input" / "materials" / "animation.gif"
+        media.parent.mkdir(parents=True, exist_ok=True)
+        media.write_bytes(b"GIF89a")
+        job = web_app.JobWorkspace(root)
+        job.update(
+            note_target="notes/Research/test.md", note_mode="create",
+            note_preview="## Result\n\n![[materials/animation.gif]]",
+        )
+        asyncio.run(web_app._save_note_local(job))
+        state = job.read()
+        expected = "notes/_attachments/Research-Starter/save-with-media/materials/animation.gif"
+        self.assertTrue(state["note_local_saved"])
+        self.assertEqual("completed", state["note_save_status"])
+        self.assertEqual([expected], state["note_attachments"])
+        self.assertIn(f"![[{expected}]]", Path(state["note_local_path"]).read_text(encoding="utf-8"))
+        self.assertFalse((web_app.settings.obsidian_write_root / "Research" / "test.md").exists())
+
+    def test_same_name_note_is_saved_as_independent_language_version(self) -> None:
+        web_app.initialize_local_vault(web_app.settings)
+        existing = web_app.settings.local_obsidian_vault / "notes/Research/polarization.md"
+        existing.parent.mkdir(parents=True, exist_ok=True)
+        existing.write_text("中文旧笔记\n", encoding="utf-8")
+        root = self.make_renderable_job("english-version", "research-note")
+        job = web_app.JobWorkspace(root)
+        job.update(
+            language="en", note_target="notes/Research/polarization.md",
+            note_mode="append", note_preview="# Polarization\n\nEnglish only.",
+        )
+        state = save_local(job, web_app.settings)
+        saved = Path(state["note_local_path"])
+        self.assertEqual("polarization-en.md", saved.name)
+        self.assertEqual("中文旧笔记\n", existing.read_text(encoding="utf-8"))
+        self.assertEqual("# Polarization\n\nEnglish only.\n", saved.read_text(encoding="utf-8"))
+        self.assertEqual("# Polarization\n\nEnglish only.", state["note_preview"])
+        self.assertEqual("create", state["note_mode"])
+
+    def test_slides_accepts_project_private_pptx_template(self) -> None:
+        with TestClient(web_app.app) as client:
+            response = client.post(
+                "/api/jobs",
+                data={"task": "research-slides", "instructions": "Make slides"},
+                files=[
+                    ("files", ("materials/source.txt", b"source", "text/plain")),
+                    ("ppt_template", ("academic.pptx", b"pptx-template", "application/vnd.openxmlformats-officedocument.presentationml.presentation")),
+                ],
+            )
+        self.assertEqual(202, response.status_code)
+        state = json.loads((web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8"))
+        template = Path(state["template_path"])
+        self.assertEqual(b"pptx-template", template.read_bytes())
+        self.assertEqual("template", template.parent.name)
+
+    def test_paper_prompt_requires_direct_conversation_response(self) -> None:
+        root = self.make_renderable_job("paper-prompt", "paper-guide")
+        prompt = runner_tasks._skill_prompt(
+            "paper-guide", web_app.JobWorkspace(root), "", web_app.settings, "zh"
+        )
+        self.assertIn("directly in your final response", prompt)
+        self.assertIn("Do not create reading-guide.md", prompt)
+        self.assertNotIn("Save the reading guide", prompt)
+
+    def test_job_records_selected_model_effort_and_language(self) -> None:
+        original_status = web_app._get_codex_status
+
+        async def fake_status(*, refresh=False):
+            return {
+                "models": {"data": [{
+                    "model": "test-model",
+                    "hidden": False,
+                    "supportedReasoningEfforts": [{"reasoningEffort": "high"}],
+                }]},
+                "usage": {"rateLimits": {}},
+            }
+
+        web_app._get_codex_status = fake_status
+        try:
+            with TestClient(web_app.app) as client:
+                response = client.post(
+                    "/api/jobs",
+                    data={
+                        "task": "research-note",
+                        "model": "test-model",
+                        "effort": "high",
+                        "language": "ja",
+                    },
+                    files=[("files", ("materials/a.txt", b"A", "text/plain"))],
+                )
+        finally:
+            web_app._get_codex_status = original_status
+        self.assertEqual(202, response.status_code)
+        state = json.loads(
+            (web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("test-model", state["model"])
+        self.assertEqual("high", state["reasoning_effort"])
+        self.assertEqual("ja", state["language"])
+
+    def test_all_task_types_reach_runner_before_using_result(self) -> None:
+        original_runner = runner_tasks.CodexRunner
+
+        class FakeRunner:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                return None
+
+            async def run_skill(self, **kwargs):
+                response = "first response"
+                if kwargs["skill_name"] == "research-note":
+                    response = "<research-note-target>notes/test.md</research-note-target>\n<research-note-mode>create</research-note-mode>\n```markdown\nfirst response\n```"
+                return "thread-test", type("FakeResult", (), {"final_response": response + "\n<research-starter-title>中文测试标题</research-starter-title>"})()
+
+        runner_tasks.CodexRunner = FakeRunner
+        try:
+            for task in ("paper-guide", "research-note", "research-slides"):
+                root = self.make_renderable_job(f"runner-{task}", task)
+                job = web_app.JobWorkspace(root)
+                asyncio.run(runner_tasks.run_existing_job(job, "test", settings=web_app.settings))
+                state = job.read()
+                self.assertEqual("completed", state["status"])
+                self.assertIn("first response", state["initial_response"])
+                if task == "research-note":
+                    self.assertEqual("first response", state["note_preview"])
+                self.assertEqual("中文测试标题", state["title"])
+                self.assertEqual("thread-test", state["thread_id"])
+        finally:
+            runner_tasks.CodexRunner = original_runner
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,7 @@
+interface:
+  display_name: "科研演示制作"
+  short_description: "从投送文件夹生成经过检查的可编辑科研 PPTX"
+  default_prompt: "Use $research-slides to inventory the named intake task, resolve important material ambiguities, and create an editable scientific PPTX."
+
+policy:
+  allow_implicit_invocation: true

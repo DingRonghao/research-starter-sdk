@@ -1,0 +1,8 @@
+interface:
+  display_name: "科研笔记整理"
+  short_description: "将明确要保存的科研所得整理进现有 Obsidian Vault"
+  default_prompt: "Use $research-note to organize the named intake task into my Obsidian Research Vault."
+
+policy:
+  allow_implicit_invocation: true
+

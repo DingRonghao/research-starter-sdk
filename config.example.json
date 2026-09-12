@@ -1,0 +1,13 @@
+{
+  "project_root": ".",
+  "base_python": "",
+  "local_jobs": ".runtime/jobs",
+  "local_fallback_output": ".runtime/local-output",
+  "icloud_inbox_root": "",
+  "icloud_output_root": "",
+  "codex_home": "",
+  "obsidian_vault": "",
+  "obsidian_write_root": "",
+  "local_obsidian_vault": ".runtime/obsidian-local-vault",
+  "obsidian_exe": ""
+}

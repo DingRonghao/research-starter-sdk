@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Research Starter</h1><p class="lede">选择任务，提供内容，点击运行。</p>
+<section class="task-links"><a href="/tasks/paper-guide"><strong>Paper Guide</strong><span>论文导读与同线程追问</span></a><a href="/tasks/research-note"><strong>Research Note</strong><span>预览后写入 Obsidian</span></a><a href="/tasks/research-slides"><strong>Research Slides</strong><span>生成可编辑 PPTX</span></a></section>
+<div class="history-heading"><div><h2>项目库</h2><p class="muted">星标项目置顶；此处显示全部本地任务。</p></div></div>
+<section class="job-library">
+{% for task, title in [('paper-guide','Paper Guide'),('research-note','Research Note'),('research-slides','Research Slides')] %}
+<div class="job-column"><h3>{{ title }} <span>{{ jobs_by_task[task]|length }}</span></h3><div class="job-stack">
+{% for job in jobs_by_task[task] %}<article class="job-card" data-job-id="{{ job.job_id }}"><a href="/jobs/{{ job.job_id }}"><strong>{{ job.display_title }}</strong><small>{{ job.created_at }} · {{ job.job_id }}</small><span class="status-pill">{{ job.status }}</span></a><div class="job-card-actions"><button class="icon-button star-job" title="星标" aria-label="星标项目">{{ '★' if job.starred else '☆' }}</button><button class="icon-button rename-job" title="修改项目名称" aria-label="修改项目名称">改名</button><button class="icon-button danger delete-job" title="删除任务记录" aria-label="删除任务记录">删除</button></div></article>
+{% else %}<p class="empty-state">暂无项目</p>{% endfor %}</div></div>
+{% endfor %}</section>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('.star-job').forEach(button => button.addEventListener('click', async () => { const card=button.closest('.job-card'); const response=await fetch(`/api/jobs/${card.dataset.jobId}/star`,{method:'POST'}); if(response.ok) location.reload(); }));
+document.querySelectorAll('.rename-job').forEach(button => button.addEventListener('click', async () => { const card=button.closest('.job-card'),current=card.querySelector('strong').textContent.trim(),title=prompt('请输入不超过 40 个字符的项目名称：',current); if(title===null)return; const body=new FormData();body.append('title',title);const response=await fetch(`/api/jobs/${card.dataset.jobId}/title`,{method:'POST',body});if(response.ok)location.reload();else alert((await response.json()).detail||'改名失败'); }));
+document.querySelectorAll('.delete-job').forEach(button => button.addEventListener('click', async () => { const card=button.closest('.job-card'); if(!confirm(`只删除本项目的任务记录 ${card.dataset.jobId}？\n不会删除已写入 Obsidian 的笔记和附件。`)) return; const response=await fetch(`/api/jobs/${card.dataset.jobId}`,{method:'DELETE'}); if(response.ok) card.remove(); }));
+</script>{% endblock %}

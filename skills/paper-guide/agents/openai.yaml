@@ -1,0 +1,8 @@
+interface:
+  display_name: "论文阅读导引"
+  short_description: "拖入科研 PDF，获得阅读路线和局部原文解释"
+  default_prompt: "阅读我附加的科研论文。先给我简洁的阅读导引和具体原文定位，然后停下来等我提问。"
+
+policy:
+  allow_implicit_invocation: true
+

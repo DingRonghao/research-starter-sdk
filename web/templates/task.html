@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}{{ task }} · Research Starter{% endblock %}
+{% block content %}
+<a class="back" href="/">← 返回</a>
+<h1>{{ task }}</h1>
+<form id="job-form" enctype="multipart/form-data">
+  <input type="hidden" name="task" value="{{ task }}">
+  {% if task == 'paper-guide' %}
+    <label>PDF<input type="file" name="files" accept="application/pdf" data-local-source></label>
+    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；可以直接上传本地 PDF。</p>{% endif %}
+    <label>阅读备注（可选）<textarea name="instructions"></textarea></label>
+  {% elif task == 'research-note' %}
+    <label>素材文件夹（必选）
+      <span class="folder-picker"><span class="folder-button">选择文件夹</span><span class="folder-status">未选择任何文件夹</span></span>
+      <input class="visually-hidden folder-input" type="file" name="files" webkitdirectory directory multiple data-local-source aria-label="选择素材文件夹">
+    </label>
+    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择素材文件夹（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；请选择本地素材文件夹。</p>{% endif %}
+    <label>补充说明（可选）<textarea name="instructions" placeholder="例如：希望笔记回答的问题、整理重点或结构偏好"></textarea></label>
+  {% else %}
+    <label>素材文件夹（必选）
+      <span class="folder-picker"><span class="folder-button">选择文件夹</span><span class="folder-status">未选择任何文件夹</span></span>
+      <input class="visually-hidden folder-input" type="file" name="files" webkitdirectory directory multiple data-local-source aria-label="选择素材文件夹">
+    </label>
+    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择素材文件夹（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；请选择本地素材文件夹。</p>{% endif %}
+    <label>PPT 模板（可选）<input type="file" name="ppt_template" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"><span class="muted">上传后会保留模板已有页面与主题，并在其后追加内容。</span></label>
+    <label>内容 / 页面逻辑<textarea name="instructions" required></textarea></label>
+  {% endif %}
+  <section class="control-panel">
+    <div>
+      <h2>输出语言</h2>
+      <p class="muted">控制导读、笔记和幻灯片正文的主要语言。</p>
+    </div>
+    <div class="language-switch" role="radiogroup" aria-label="输出语言">
+      <label><input type="radio" name="language" value="zh" checked><span>中文</span></label>
+      <label><input type="radio" name="language" value="ja"><span>日本語</span></label>
+      <label><input type="radio" name="language" value="en"><span>English</span></label>
+    </div>
+  </section>
+  <section class="control-panel codex-controls">
+    <div>
+      <h2>Codex 设置</h2>
+      <p class="muted" id="codex-summary">正在读取当前账户的模型与用量…</p>
+    </div>
+    <label>模型<select name="model" id="model"><option value="">正在加载…</option></select></label>
+    <label>推理等级<select name="effort" id="effort"><option value="">正在加载…</option></select></label>
+  </section>
+  <button type="submit">{% if task == 'research-note' %}预览{% elif task == 'research-slides' %}生成 PPT{% else %}开始阅读{% endif %}</button>
+</form>
+<p id="message"></p>
+{% endblock %}
+{% block scripts %}
+<script>
+const modelSelect = document.querySelector('#model');
+const effortSelect = document.querySelector('#effort');
+const codexSummary = document.querySelector('#codex-summary');
+let codexModels = [];
+
+function usageText(window, fallback) {
+  if (!window) return `${fallback}：不可用`;
+  const remaining = Math.max(0, 100 - window.usedPercent);
+  const reset = window.resetsAt ? new Date(window.resetsAt * 1000).toLocaleString() : '未知';
+  return `${fallback}：剩余 ${remaining}%（重置 ${reset}）`;
+}
+
+function updateEfforts() {
+  const model = codexModels.find(item => item.model === modelSelect.value);
+  effortSelect.innerHTML = '';
+  for (const option of model?.supportedReasoningEfforts || []) {
+    const element = document.createElement('option');
+    element.value = option.reasoningEffort;
+    element.textContent = option.reasoningEffort;
+    element.selected = option.reasoningEffort === (localStorage.getItem('research-starter-effort') || model.defaultReasoningEffort);
+    effortSelect.appendChild(element);
+  }
+  localStorage.setItem('research-starter-model', modelSelect.value);
+}
+
+async function loadCodexStatus() {
+  try {
+    const response = await fetch('/api/codex/status');
+    if (!response.ok) throw new Error('status unavailable');
+    const status = await response.json();
+    codexModels = status.models.data.filter(item => !item.hidden);
+    const remembered = localStorage.getItem('research-starter-model');
+    modelSelect.innerHTML = '';
+    for (const model of codexModels) {
+      const option = document.createElement('option');
+      option.value = model.model;
+      option.textContent = `${model.displayName}${model.isDefault ? '（默认）' : ''}`;
+      option.selected = remembered ? model.model === remembered : model.isDefault;
+      modelSelect.appendChild(option);
+    }
+    if (!modelSelect.value && codexModels.length) modelSelect.value = codexModels[0].model;
+    updateEfforts();
+    const limits = status.usage.rateLimits || {};
+    codexSummary.textContent = `${usageText(limits.primary, '5 小时')} · ${usageText(limits.secondary, '一周')}`;
+  } catch (_) {
+    modelSelect.innerHTML = '<option value="">运行时默认</option>';
+    effortSelect.innerHTML = '<option value="">运行时默认</option>';
+    codexSummary.textContent = '暂时无法读取 Codex 状态；任务将使用运行时默认设置。';
+  }
+}
+
+modelSelect.addEventListener('change', updateEfforts);
+effortSelect.addEventListener('change', () => localStorage.setItem('research-starter-effort', effortSelect.value));
+document.querySelectorAll('[name="language"]').forEach(input => {
+  input.checked = input.value === (localStorage.getItem('research-starter-language') || 'zh');
+  input.addEventListener('change', () => localStorage.setItem('research-starter-language', input.value));
+});
+loadCodexStatus();
+
+document.querySelector('.folder-picker')?.addEventListener('click', () => document.querySelector('.folder-input').click());
+document.querySelector('.folder-input')?.addEventListener('change', event => {
+  const first = event.target.files[0];
+  const folder = first?.webkitRelativePath?.split('/')[0];
+  document.querySelector('.folder-status').textContent = folder
+    ? `${folder}（${event.target.files.length} 个文件）`
+    : '未选择任何文件夹';
+});
+
+document.querySelector('#job-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const message = document.querySelector('#message');
+  const form = event.target;
+  const fileInput = form.querySelector('[data-local-source]');
+  const cloudSelect = form.querySelector('[name="icloud_item"]');
+  if (!fileInput.files.length && !cloudSelect.value) {
+    message.textContent = '{{ "请选择一个素材文件夹" if task in ["research-note", "research-slides"] else "请选择一个 PDF" }}';
+    return;
+  }
+  message.textContent = 'Preparing…';
+  const formData = new FormData(form);
+  formData.delete('files');
+  for (const file of fileInput.files) {
+    formData.append('files', file, file.webkitRelativePath || file.name);
+  }
+  const response = await fetch('/api/jobs', {method: 'POST', body: formData});
+  const data = await response.json();
+  if (!response.ok) { message.textContent = data.detail || '提交失败'; return; }
+  location.href = `/jobs/${data.job_id}`;
+});
+</script>
+{% endblock %}
