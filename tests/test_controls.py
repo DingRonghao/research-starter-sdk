@@ -105,6 +105,8 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('Node.js 18 or newer', script)
         self.assertIn("Trim().Trim('\"')", script)
         self.assertIn('catch { return $false }', script)
+        self.assertIn('function Test-ExistingFile', script)
+        self.assertNotIn('Test-Path -LiteralPath $npm', script)
         self.assertNotIn('GetFullPath($cleanValue, $project)', script)
         self.assertNotIn("GetFullPath($value, '%~dp0')", (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8'))
         self.assertNotRegex(script, r'[\u0080-\uffff]')

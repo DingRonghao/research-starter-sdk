@@ -34,6 +34,11 @@ function Resolve-ConfiguredPath([object]$Value) {
     } catch { return '' }
 }
 
+function Test-ExistingFile([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    return Test-Path -LiteralPath $Path -PathType Leaf
+}
+
 function Select-RequiredFile([string]$Title, [string]$Filter) {
     if ($NonInteractive) { return '' }
     Add-Type -AssemblyName System.Windows.Forms
@@ -110,17 +115,21 @@ if (-not (Test-Path -LiteralPath $requiredNodeAsset -PathType Leaf)) {
         $nodeValid = Test-Node -Path $node
     }
     $npm = Resolve-ConfiguredPath $config.npm_cmd
-    if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) {
+    $npmValid = Test-ExistingFile -Path $npm
+    if (-not $npmValid) {
         $besideNode = Join-Path (Split-Path $node -Parent) 'npm.cmd'
-        if (Test-Path -LiteralPath $besideNode -PathType Leaf) { $npm = $besideNode }
+        if (Test-ExistingFile -Path $besideNode) { $npm = $besideNode }
     }
-    if (-not (Test-Path -LiteralPath $npm -PathType Leaf)) {
+    $npmValid = Test-ExistingFile -Path $npm
+    if (-not $npmValid) {
         $command = Get-Command npm.cmd -ErrorAction SilentlyContinue
         if ($command) { $npm = $command.Source }
     }
-    while (-not (Test-Path -LiteralPath $npm -PathType Leaf)) {
+    $npmValid = Test-ExistingFile -Path $npm
+    while (-not $npmValid) {
         $npm = Select-RequiredFile 'Select npm.cmd from the same Node.js installation.' 'npm command (npm.cmd)|npm.cmd'
         if (-not $npm) { throw 'First-run setup cancelled: npm.cmd was not selected.' }
+        $npmValid = Test-ExistingFile -Path $npm
     }
     $config.node_exe = $node
     $config.npm_cmd = $npm
