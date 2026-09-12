@@ -1,6 +1,8 @@
 {
   "project_root": ".",
   "base_python": "",
+  "node_exe": "",
+  "npm_cmd": "",
   "local_jobs": ".runtime/jobs",
   "local_fallback_output": ".runtime/local-output",
   "icloud_inbox_root": "",

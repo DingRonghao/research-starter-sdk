@@ -13,3 +13,13 @@
 *.css text eol=lf
 *.yaml text eol=lf
 *.csv text eol=lf
+
+# Files needed for source control or development history, not for end-user ZIPs.
+.gitignore export-ignore
+.gitattributes export-ignore
+/tests export-ignore
+/MIGRATION_BASELINE.md export-ignore
+/MIGRATION_LOG.md export-ignore
+/RELEASE_DATA_POLICY.md export-ignore
+/RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md export-ignore
+/UI_UPDATE_20260912.md export-ignore

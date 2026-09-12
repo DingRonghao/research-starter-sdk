@@ -7,6 +7,7 @@ __pycache__/
 .pytest_cache/
 *.log
 /tmp/
+/dist/
 
 # Keep the Inbox/Output product structure and selected public examples, while
 # leaving any additional local projects on disk but outside Git.

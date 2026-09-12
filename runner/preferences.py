@@ -9,6 +9,8 @@ from .config import Settings, _resolve
 
 PATH_LABELS = {
     "base_python": "基础 Python（仅用于首次创建项目 .venv）",
+    "node_exe": "Node.js 可执行文件（首次安装项目依赖）",
+    "npm_cmd": "npm 命令文件（首次安装项目依赖）",
     "local_jobs": "本地项目记录目录",
     "local_fallback_output": "本地备用输出目录",
     "icloud_inbox_root": "iCloud 素材入口（可选）",
@@ -20,7 +22,7 @@ PATH_LABELS = {
     "obsidian_exe": "Obsidian 可执行文件",
 }
 OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root"}
-VERSION = "1.0.0-internal.1"
+VERSION = "1.0.0-internal.2"
 
 
 def app_info(root: Path) -> dict:
@@ -42,9 +44,12 @@ def save_preferences(current: Settings, values: dict) -> Settings:
         if not raw.strip():
             raise ValueError(f"{PATH_LABELS[key]}不能为空")
         path = _resolve(current.project_root, raw.strip())
-        if key in {"base_python", "obsidian_exe"}:
+        if key in {"base_python", "node_exe", "obsidian_exe"}:
             if not path.is_file() or path.suffix.lower() != ".exe":
                 raise ValueError(f"{PATH_LABELS[key]}必须是已有的 .exe 文件")
+        elif key == "npm_cmd":
+            if not path.is_file() or path.suffix.lower() not in {".cmd", ".exe"}:
+                raise ValueError(f"{PATH_LABELS[key]}必须是已有的 npm.cmd 或可执行文件")
         elif not path.is_dir():
             raise ValueError(f"{PATH_LABELS[key]}必须是已有文件夹：{path}")
         paths[key] = path

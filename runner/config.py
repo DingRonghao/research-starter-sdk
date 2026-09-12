@@ -11,6 +11,8 @@ from pathlib import Path
 class Settings:
     project_root: Path
     base_python: Path
+    node_exe: Path
+    npm_cmd: Path
     local_jobs: Path
     local_fallback_output: Path
     icloud_inbox_root: Path | None
@@ -47,6 +49,8 @@ def load_settings(path: Path | None = None) -> Settings:
     return Settings(
         project_root=project_root,
         base_python=_resolve(project_root, data["base_python"]),
+        node_exe=_resolve(project_root, data.get("node_exe") or "node.exe"),
+        npm_cmd=_resolve(project_root, data.get("npm_cmd") or "npm.cmd"),
         local_jobs=_resolve(project_root, data["local_jobs"]),
         local_fallback_output=_resolve(project_root, data["local_fallback_output"]),
         icloud_inbox_root=_optional(project_root, data.get("icloud_inbox_root")),

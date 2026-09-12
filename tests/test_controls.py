@@ -83,7 +83,16 @@ class ControlsTests(unittest.TestCase):
     def test_launcher_reads_base_python_from_config(self):
         launcher = (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8')
         self.assertIn('.base_python', launcher)
+        self.assertIn('Bootstrap Research Starter.ps1', launcher)
+        self.assertIn('.npm_cmd', launcher)
         self.assertNotIn('C:\\mambaforge', launcher)
+
+    def test_first_run_bootstrap_is_shipped_and_uses_file_picker(self):
+        script = (Path(__file__).parents[1] / 'Bootstrap Research Starter.ps1').read_text(encoding='utf-8')
+        self.assertIn('OpenFileDialog', script)
+        self.assertIn('Python 3.10, 3.11, or 3.12', script)
+        self.assertIn('Node.js 18 or newer', script)
+        self.assertNotRegex(script, r'[\u0080-\uffff]')
 
     def test_busy_job_prevents_settings_change(self):
         create_job(self.settings.local_jobs, 'paper-guide', [])
