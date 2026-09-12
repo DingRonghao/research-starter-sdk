@@ -43,7 +43,8 @@ def _optional(root: Path, value: object) -> Path | None:
 
 def load_settings(path: Path | None = None) -> Settings:
     config_path = (path or Path("config.local.json")).resolve()
-    data = json.loads(config_path.read_text(encoding="utf-8"))
+    # Windows PowerShell 5 writes a UTF-8 BOM during first-run setup.
+    data = json.loads(config_path.read_text(encoding="utf-8-sig"))
     config_dir = config_path.parent
     project_root = _resolve(config_dir, data.get("project_root", "."))
     return Settings(

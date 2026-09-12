@@ -22,7 +22,7 @@ PATH_LABELS = {
     "obsidian_exe": "Obsidian 可执行文件",
 }
 OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root"}
-VERSION = "1.0.0-internal.2"
+VERSION = "1.0.0-internal.3"
 
 
 def app_info(root: Path) -> dict:
@@ -67,7 +67,7 @@ def save_preferences(current: Settings, values: dict) -> Settings:
     if paths["obsidian_vault"] is not None and paths["local_obsidian_vault"].is_relative_to(paths["obsidian_vault"]):
         raise ValueError("项目本地 Obsidian Vault 不能位于云端 Vault 内")
     config_path = current.project_root / "config.local.json"
-    original = json.loads(config_path.read_text(encoding="utf-8"))
+    original = json.loads(config_path.read_text(encoding="utf-8-sig"))
     backup = current.project_root / ".runtime" / "config-backups" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup.mkdir(parents=True)
     shutil.copy2(config_path, backup / config_path.name)

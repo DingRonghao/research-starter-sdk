@@ -4,11 +4,11 @@ cd /d "%~dp0"
 set "PROJECT_PYTHON=%~dp0.venv\Scripts\python.exe"
 set "CONFIG_FILE=%~dp0config.local.json"
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Bootstrap Research Starter.ps1" -ProjectRoot "%~dp0" || goto :fail
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Bootstrap Research Starter.ps1" -ProjectRoot "%~dp0." || goto :fail
 
 if not exist "%PROJECT_PYTHON%" (
   set "BASE_PYTHON="
-  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$value=(Get-Content -Raw -LiteralPath '%CONFIG_FILE%' | ConvertFrom-Json).base_python; if ($value) { [IO.Path]::GetFullPath($value, '%~dp0') }"`) do set "BASE_PYTHON=%%I"
+  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$value=(Get-Content -Raw -LiteralPath '%CONFIG_FILE%' | ConvertFrom-Json).base_python; if ($value) { if ([IO.Path]::IsPathRooted($value)) { [IO.Path]::GetFullPath($value) } else { [IO.Path]::GetFullPath((Join-Path '%~dp0' $value)) } }"`) do set "BASE_PYTHON=%%I"
   if not exist "!BASE_PYTHON!" (
     echo Research Starter setup failed: the selected Python is unavailable.
     pause
@@ -22,7 +22,7 @@ if not exist "%PROJECT_PYTHON%" (
 
 if not exist "%~dp0node_modules\pptxgenjs" (
   set "NPM_CMD="
-  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$value=(Get-Content -Raw -LiteralPath '%CONFIG_FILE%' | ConvertFrom-Json).npm_cmd; if ($value) { [IO.Path]::GetFullPath($value, '%~dp0') }"`) do set "NPM_CMD=%%I"
+  for /f "usebackq delims=" %%I in (`powershell.exe -NoProfile -Command "$value=(Get-Content -Raw -LiteralPath '%CONFIG_FILE%' | ConvertFrom-Json).npm_cmd; if ($value) { if ([IO.Path]::IsPathRooted($value)) { [IO.Path]::GetFullPath($value) } else { [IO.Path]::GetFullPath((Join-Path '%~dp0' $value)) } }"`) do set "NPM_CMD=%%I"
   call "!NPM_CMD!" install --ignore-scripts --cache "%~dp0.runtime\npm-cache" || goto :fail
 )
 

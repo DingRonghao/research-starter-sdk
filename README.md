@@ -1,6 +1,6 @@
 # Research Starter SDK
 
-当前发布版本：**1.0.0-internal.2**（内部测试 1.0 修正版）。
+当前发布版本：**1.0.0-internal.3**（内部测试 1.0 启动修正版）。
 
 Windows 使用入口：双击 `Start Research Starter.cmd`。Launcher 直接调用项目 `.venv`，无需激活环境，并只在 `127.0.0.1:8765` 启动本地页面。
 

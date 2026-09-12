@@ -70,6 +70,16 @@ class ControlsTests(unittest.TestCase):
         self.assertIsNone(reloaded.icloud_inbox_root)
         self.assertIsNone(reloaded.obsidian_write_root)
 
+    def test_windows_powershell_bom_config_is_accepted(self):
+        data = json.loads(self.config.read_text(encoding='utf-8'))
+        data['node_exe'] = str(self.settings.node_exe)
+        data['npm_cmd'] = str(self.settings.npm_cmd)
+        self.config.write_text(json.dumps(data), encoding='utf-8-sig')
+        reloaded = __import__('runner.config', fromlist=['load_settings']).load_settings(self.config)
+        self.assertEqual(self.settings.base_python, reloaded.base_python)
+        updated = save_preferences(reloaded, {})
+        self.assertEqual(self.settings.base_python, updated.base_python)
+
     def test_settings_change_is_used_immediately(self):
         changed_jobs = self.root / 'changed-jobs'
         changed_jobs.mkdir()
@@ -84,6 +94,7 @@ class ControlsTests(unittest.TestCase):
         launcher = (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8')
         self.assertIn('.base_python', launcher)
         self.assertIn('Bootstrap Research Starter.ps1', launcher)
+        self.assertIn('-ProjectRoot "%~dp0."', launcher)
         self.assertIn('.npm_cmd', launcher)
         self.assertNotIn('C:\\mambaforge', launcher)
 
@@ -92,6 +103,10 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('OpenFileDialog', script)
         self.assertIn('Python 3.10, 3.11, or 3.12', script)
         self.assertIn('Node.js 18 or newer', script)
+        self.assertIn("Trim().Trim('\"')", script)
+        self.assertIn('catch { return $false }', script)
+        self.assertNotIn('GetFullPath($cleanValue, $project)', script)
+        self.assertNotIn("GetFullPath($value, '%~dp0')", (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8'))
         self.assertNotRegex(script, r'[\u0080-\uffff]')
 
     def test_busy_job_prevents_settings_change(self):

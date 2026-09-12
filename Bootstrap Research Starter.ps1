@@ -4,26 +4,34 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$project = [IO.Path]::GetFullPath($ProjectRoot)
+$cleanProjectRoot = ("$ProjectRoot").Trim().Trim('"')
+$project = [IO.Path]::GetFullPath($cleanProjectRoot)
 $localConfig = Join-Path $project 'config.local.json'
 $exampleConfig = Join-Path $project 'config.example.json'
 
 function Test-Python([string]$Path) {
     if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-    & $Path -c "import sys;raise SystemExit(0 if (3,10) <= sys.version_info[:2] < (3,13) else 1)" 2>$null
-    return $LASTEXITCODE -eq 0
+    try {
+        & $Path -c "import sys;raise SystemExit(0 if (3,10) <= sys.version_info[:2] < (3,13) else 1)" 2>$null
+        return $LASTEXITCODE -eq 0
+    } catch { return $false }
 }
 
 function Test-Node([string]$Path) {
     if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-    & $Path -e "const v=process.versions.node.split('.')[0];process.exit(Number(v)>=18?0:1)" 2>$null
-    return $LASTEXITCODE -eq 0
+    try {
+        & $Path -e "const v=process.versions.node.split('.')[0];process.exit(Number(v)>=18?0:1)" 2>$null
+        return $LASTEXITCODE -eq 0
+    } catch { return $false }
 }
 
 function Resolve-ConfiguredPath([object]$Value) {
     if (-not $Value -or -not ("$Value").Trim()) { return '' }
-    if ([IO.Path]::IsPathRooted("$Value")) { return [IO.Path]::GetFullPath("$Value") }
-    return [IO.Path]::GetFullPath("$Value", $project)
+    try {
+        $cleanValue = ("$Value").Trim().Trim('"')
+        if ([IO.Path]::IsPathRooted($cleanValue)) { return [IO.Path]::GetFullPath($cleanValue) }
+        return [IO.Path]::GetFullPath((Join-Path $project $cleanValue))
+    } catch { return '' }
 }
 
 function Select-RequiredFile([string]$Title, [string]$Filter) {
