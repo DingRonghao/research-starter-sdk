@@ -50,7 +50,7 @@ Settings 顶部只读显示包内固定的 Python、Node 和项目依赖位置�
 
 路径保存后会备份原配置并立即用于后续任务，但不会迁移已有文件；切换项目记录目录会改变首页展示范围。项目内部的项目记录、备用输出和本地 Vault 会以项目相对路径保存，避免固化当前机器盘符。首次启动不执行 `pip install` 或 `npm install`。Codex 账户目录若与其他应用共享，重新登录将影响这些应用。正在运行任务时，请等待完成后再修改路径或登录。
 
-About 中的版本、制作者与 GitHub 地址由软件发布方维护，不可通过 Settings 修改。制作者为 Ding Ronghao与CodeX，GitHub 地址暂未提供。
+About 中的版本、制作者与 GitHub 地址由软件发布方维护，不可通过 Settings 修改。制作者为 Ding Ronghao与CodeX，项目地址为 <https://github.com/DingRonghao/research-starter-sdk>。
 
 ## 遇到问题
 
