@@ -21,7 +21,7 @@ from runner.config import Settings, load_settings
 from runner.exchange import validate_icloud_sources
 from runner.jobs import JobWorkspace, create_job, default_job_title
 from runner.tasks import resume_job, run_existing_job
-from runner.preferences import OPTIONAL_PATHS, PATH_LABELS, app_info, save_preferences
+from runner.preferences import OPTIONAL_PATHS, PATH_LABELS, app_info, bundled_runtime_info, save_preferences
 from runner.login import LoginManager
 from runner.note_store import initialize_local_vault, open_local, publish_cloud, save_local
 
@@ -352,7 +352,8 @@ async def settings_page(request: Request):
             key: "" if getattr(settings, key) is None else str(getattr(settings, key))
             for key in PATH_LABELS
         },
-        "labels": PATH_LABELS, "optional_paths": OPTIONAL_PATHS, "info": app_info(settings.project_root),
+        "labels": PATH_LABELS, "optional_paths": OPTIONAL_PATHS,
+        "runtime": bundled_runtime_info(settings), "info": app_info(settings.project_root),
     })
 
 

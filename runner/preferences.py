@@ -8,9 +8,6 @@ import shutil
 from .config import Settings, _resolve
 
 PATH_LABELS = {
-    "base_python": "基础 Python（仅用于首次创建项目 .venv）",
-    "node_exe": "Node.js 可执行文件（首次安装项目依赖）",
-    "npm_cmd": "npm 命令文件（首次安装项目依赖）",
     "local_jobs": "本地项目记录目录",
     "local_fallback_output": "本地备用输出目录",
     "icloud_inbox_root": "iCloud 素材入口（可选）",
@@ -19,14 +16,22 @@ PATH_LABELS = {
     "obsidian_vault": "云端 Obsidian Vault 根目录（可选）",
     "obsidian_write_root": "云端 Obsidian 笔记目录（可选）",
     "local_obsidian_vault": "项目本地 Obsidian Vault",
-    "obsidian_exe": "Obsidian 可执行文件",
+    "obsidian_exe": "Obsidian 可执行文件（可选）",
 }
-OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root"}
-VERSION = "1.0.0-internal.4"
+OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root", "obsidian_exe"}
+VERSION = "1.0.0-internal.5"
 
 
 def app_info(root: Path) -> dict:
     return {"version": VERSION, "author": "Ding Ronghao与CodeX", "github_url": ""}
+
+
+def bundled_runtime_info(current: Settings) -> dict:
+    return {
+        "python": str(current.python_exe),
+        "node": str(current.node_exe),
+        "dependencies": str(current.project_root / "node_modules"),
+    }
 
 
 def save_preferences(current: Settings, values: dict) -> Settings:
@@ -44,12 +49,9 @@ def save_preferences(current: Settings, values: dict) -> Settings:
         if not raw.strip():
             raise ValueError(f"{PATH_LABELS[key]}不能为空")
         path = _resolve(current.project_root, raw.strip())
-        if key in {"base_python", "node_exe", "obsidian_exe"}:
+        if key == "obsidian_exe":
             if not path.is_file() or path.suffix.lower() != ".exe":
                 raise ValueError(f"{PATH_LABELS[key]}必须是已有的 .exe 文件")
-        elif key == "npm_cmd":
-            if not path.is_file() or path.suffix.lower() not in {".cmd", ".exe"}:
-                raise ValueError(f"{PATH_LABELS[key]}必须是已有的 npm.cmd 或可执行文件")
         elif not path.is_dir():
             raise ValueError(f"{PATH_LABELS[key]}必须是已有文件夹：{path}")
         paths[key] = path
@@ -67,10 +69,12 @@ def save_preferences(current: Settings, values: dict) -> Settings:
     if paths["obsidian_vault"] is not None and paths["local_obsidian_vault"].is_relative_to(paths["obsidian_vault"]):
         raise ValueError("项目本地 Obsidian Vault 不能位于云端 Vault 内")
     config_path = current.project_root / "config.local.json"
-    original = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    source = config_path if config_path.is_file() else current.project_root / "config.example.json"
+    original = json.loads(source.read_text(encoding="utf-8-sig"))
     backup = current.project_root / ".runtime" / "config-backups" / datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     backup.mkdir(parents=True)
-    shutil.copy2(config_path, backup / config_path.name)
+    if config_path.is_file():
+        shutil.copy2(config_path, backup / config_path.name)
     project_relative = {"local_jobs", "local_fallback_output", "local_obsidian_vault"}
     original.update({
         key: "" if path is None else (

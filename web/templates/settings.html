@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <a class="back" href="/">← 返回</a><h1>Settings</h1>
+<section class="control-panel"><div><h2>内置运行环境</h2><p class="muted">发布版固定使用包内已经验证的 Python、Node 和项目依赖，不能在 Settings 中更改，也不会写入系统 Python。</p></div>
+<label>内置 Python<input value="{{ runtime.python }}" readonly></label>
+<label>内置 Node.js<input value="{{ runtime.node }}" readonly></label>
+<label>项目依赖<input value="{{ runtime.dependencies }}" readonly></label></section>
 <form id="settings-form" class="settings-section">
-<h2>文件位置</h2><p class="muted">可以填写绝对路径，也可以填写相对于项目根目录的路径。保存后立即用于后续任务，原配置自动备份，已有文件不会搬迁。基础 Python 只在项目 `.venv` 不存在时用于首次创建环境；Node.js/npm 只在项目 `node_modules` 尚未建立时安装项目级组件。首次启动无法自动探测这些程序时会先显示文件选择框，不需要手改 JSON。</p>
-<p class="muted">iCloud 素材入口、iCloud 成品出口以及两项云端 Obsidian 路径均为可选项。不使用时留空即可；云端 Obsidian 的两项路径必须同时填写或同时留空。本地上传、本地输出和项目本地 Obsidian 不受影响。</p>
+<h2>文件位置</h2><p class="muted">可以填写绝对路径，也可以填写相对于项目根目录的路径。保存后立即用于后续任务，原配置自动备份，已有文件不会搬迁。</p>
+<p class="muted">iCloud 素材入口、iCloud 成品出口、云端 Obsidian 和 Obsidian 程序均为可选项。不使用时留空即可；云端 Obsidian 的两项路径必须同时填写或同时留空。本地上传、本地输出和 Markdown 预览不受影响。</p>
 {% for key,value in settings.items() %}<label>{{ labels[key] }}<input name="{{ key }}" value="{{ value }}" {% if key not in optional_paths %}required{% endif %} spellcheck="false" placeholder="{% if key in optional_paths %}留空表示不启用{% endif %}"></label>{% endfor %}
 <button type="submit">保存设置</button><p id="settings-message" role="status"></p></form>
 <section class="control-panel">

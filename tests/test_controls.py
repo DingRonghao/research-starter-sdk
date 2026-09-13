@@ -27,13 +27,11 @@ class ControlsTests(unittest.TestCase):
         paths['obsidian_write_root'] = paths['obsidian_vault'] / 'notes'
         for path in paths.values():
             path.mkdir(parents=True, exist_ok=True)
-        paths['base_python'] = self.root / 'Python.exe'
-        paths['base_python'].write_bytes(b'test fixture')
         paths['obsidian_exe'] = self.root / 'Obsidian.exe'
         paths['obsidian_exe'].write_bytes(b'test fixture')
         self.settings = replace(web.settings, project_root=self.root, **paths)
         self.config = self.root / 'config.local.json'
-        self.config.write_text(json.dumps({'project_root': '.', 'base_python': str(self.settings.base_python), **{k: str(v) for k,v in paths.items()}}), encoding='utf-8')
+        self.config.write_text(json.dumps({'project_root': '.', **{k: str(v) for k,v in paths.items()}}), encoding='utf-8')
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -72,13 +70,11 @@ class ControlsTests(unittest.TestCase):
 
     def test_windows_powershell_bom_config_is_accepted(self):
         data = json.loads(self.config.read_text(encoding='utf-8'))
-        data['node_exe'] = str(self.settings.node_exe)
-        data['npm_cmd'] = str(self.settings.npm_cmd)
         self.config.write_text(json.dumps(data), encoding='utf-8-sig')
         reloaded = __import__('runner.config', fromlist=['load_settings']).load_settings(self.config)
-        self.assertEqual(self.settings.base_python, reloaded.base_python)
+        self.assertEqual(self.settings.local_jobs, reloaded.local_jobs)
         updated = save_preferences(reloaded, {})
-        self.assertEqual(self.settings.base_python, updated.base_python)
+        self.assertEqual(self.settings.local_jobs, updated.local_jobs)
 
     def test_settings_change_is_used_immediately(self):
         changed_jobs = self.root / 'changed-jobs'
@@ -90,26 +86,34 @@ class ControlsTests(unittest.TestCase):
         saved = json.loads(self.config.read_text(encoding='utf-8'))
         self.assertEqual('changed-jobs', saved['local_jobs'])
 
-    def test_launcher_reads_base_python_from_config(self):
+    def test_launcher_uses_only_bundled_runtimes(self):
         launcher = (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8')
-        self.assertIn('.base_python', launcher)
-        self.assertIn('Bootstrap Research Starter.ps1', launcher)
-        self.assertIn('-ProjectRoot "%~dp0."', launcher)
-        self.assertIn('.npm_cmd', launcher)
+        self.assertIn('runtime\\python\\python.exe', launcher)
+        self.assertIn('runtime\\node\\node.exe', launcher)
+        self.assertNotIn('pip install', launcher)
+        self.assertNotIn('npm', launcher.lower())
+        self.assertNotIn('Bootstrap Research Starter.ps1', launcher)
         self.assertNotIn('C:\\mambaforge', launcher)
 
-    def test_first_run_bootstrap_is_shipped_and_uses_file_picker(self):
-        script = (Path(__file__).parents[1] / 'Bootstrap Research Starter.ps1').read_text(encoding='utf-8')
-        self.assertIn('OpenFileDialog', script)
-        self.assertIn('Python 3.10, 3.11, or 3.12', script)
-        self.assertIn('Node.js 18 or newer', script)
-        self.assertIn("Trim().Trim('\"')", script)
-        self.assertIn('catch { return $false }', script)
-        self.assertIn('function Test-ExistingFile', script)
-        self.assertNotIn('Test-Path -LiteralPath $npm', script)
-        self.assertNotIn('GetFullPath($cleanValue, $project)', script)
-        self.assertNotIn("GetFullPath($value, '%~dp0')", (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8'))
-        self.assertNotRegex(script, r'[\u0080-\uffff]')
+    def test_runtime_paths_are_fixed_and_not_editable_preferences(self):
+        self.assertEqual(self.root / 'runtime/python/python.exe', self.settings.python_exe)
+        self.assertEqual(self.root / 'runtime/node/node.exe', self.settings.node_exe)
+        self.assertNotIn('base_python', __import__('runner.preferences', fromlist=['PATH_LABELS']).PATH_LABELS)
+        self.assertNotIn('node_exe', __import__('runner.preferences', fromlist=['PATH_LABELS']).PATH_LABELS)
+
+    def test_release_defaults_work_without_local_config(self):
+        release = self.root / 'release-defaults'
+        release.mkdir()
+        (release / 'config.example.json').write_text(json.dumps({
+            'project_root': '.', 'local_jobs': '.runtime/jobs',
+            'local_fallback_output': '.runtime/local-output', 'codex_home': '',
+            'local_obsidian_vault': '.runtime/obsidian-local-vault',
+        }), encoding='utf-8')
+        loaded = __import__('runner.config', fromlist=['load_settings']).load_settings(release / 'config.local.json')
+        self.assertTrue(loaded.local_jobs.is_dir())
+        self.assertTrue(loaded.local_fallback_output.is_dir())
+        self.assertTrue(loaded.local_obsidian_vault.is_dir())
+        self.assertEqual(Path.home() / '.codex', loaded.codex_home)
 
     def test_busy_job_prevents_settings_change(self):
         create_job(self.settings.local_jobs, 'paper-guide', [])

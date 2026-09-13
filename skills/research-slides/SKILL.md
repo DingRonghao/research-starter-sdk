@@ -37,7 +37,7 @@ description: 根据 inbox/research-slides 下独立任务文件夹中的文字�
 
 1. 把确认后的逐页计划写成临时 JSON；不要把中间计划当作用户最终成果。
 2. 使用本 Skill 的 `scripts/generate_slides.mjs` 和 PptxGenJS 生成标准 16:9 内容稿。未提供模板时直接以内容稿作为最终 PPTX。
-3. 提供模板时，先生成独立内容稿，再调用本 Skill 的 `scripts/append_to_template.py`，通过项目 `.venv` 中现有的 `win32com` 和本机 PowerPoint 将内容稿全部页面追加到模板副本。模板原页必须逐页保留；若 PowerPoint 或 COM 不可用，明确失败，不静默退回空白重设计。
+3. 提供模板时，先生成独立内容稿，再调用本 Skill 的 `scripts/append_to_template.py`，通过项目内置 Python 运行时中现有的 `win32com` 和本机 PowerPoint 将内容稿全部页面追加到模板副本。模板原页必须逐页保留；若 PowerPoint 或 COM 不可用，明确失败，不静默退回空白重设计。
 4. 最终输出使用 Runner 指定的 Job `output/`。若用户已指定并挂载云端出口，验证完成后再投送；没有明确出口时不得猜测。
 5. 保持文本为文本框、图片为图片对象、表格和图表为原生对象。不得把整页栅格化后塞入 PPTX。
 6. 默认标题不小于 32 pt，正文不小于 18 pt；使用一致字体、高对比度和充足留白。标题页保持简洁。

@@ -199,6 +199,8 @@ def open_local(job: JobWorkspace, settings: Settings) -> dict:
     path = Path(state.get("note_local_path", "")).resolve(strict=True)
     local_root = settings.local_obsidian_vault.resolve(strict=True)
     relative = path.relative_to(local_root)
+    if settings.obsidian_exe is None:
+        raise FileNotFoundError("Obsidian is optional and is not configured. Install Obsidian, then select Obsidian.exe in Settings.")
     executable = settings.obsidian_exe.resolve(strict=True)
     vault_id = _ensure_obsidian_vault_registered(local_root, settings)
     uri = (
