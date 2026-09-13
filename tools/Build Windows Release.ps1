@@ -8,15 +8,10 @@ $dist = Join-Path $project 'dist'
 $name = "Research-Starter-Windows-$Version"
 $stage = Join-Path $dist $name
 $archive = Join-Path $dist "$name.zip"
-$launcherExe = Join-Path $project 'Research Starter.exe'
 $launcherSource = Join-Path $project 'tools\ResearchStarterLauncher.cs'
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
-if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
-    throw "Windows C# compiler is missing: $compiler"
-}
-& $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll "/win32icon:$project\assets\app-icon.ico" "/out:$launcherExe" $launcherSource
-if ($LASTEXITCODE -ne 0) { throw "Launcher compilation failed with exit code $LASTEXITCODE" }
+if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "Windows C# compiler is missing: $compiler" }
 
 foreach ($required in @(
     (Join-Path $project 'runtime\python\python.exe'),
@@ -34,6 +29,8 @@ New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
 & robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules tests tools tmp dist (Join-Path $project 'assets\source') /XF config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Application copy failed with robocopy exit code $LASTEXITCODE" }
+& $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll "/win32icon:$project\assets\app-icon.ico" "/out:$stage\Research Starter.exe" $launcherSource
+if ($LASTEXITCODE -ne 0) { throw "Launcher compilation failed with exit code $LASTEXITCODE" }
 & robocopy (Join-Path $project 'runtime') (Join-Path $stage 'runtime') /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Runtime copy failed with robocopy exit code $LASTEXITCODE" }
 & robocopy (Join-Path $project 'node_modules') (Join-Path $stage 'node_modules') /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
