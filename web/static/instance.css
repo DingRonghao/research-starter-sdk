@@ -1,0 +1,8 @@
+header { min-height: 64px; height: auto; gap: 20px; padding-top: 8px; padding-bottom: 8px; }
+.instance-brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.instance-badge { flex: none; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 800; }
+.instance-development { color: #805600; background: #fff0c2; }
+.instance-release { color: #155a40; background: #dff5e9; }
+.instance-root { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6a7485; font-size: 11px; }
+@media (max-width: 760px) { .instance-root { display: none; } }
+.brand-link{display:inline-flex;align-items:center;gap:10px}.brand-link img{display:block;width:34px;height:34px;object-fit:contain}.brand-link span{white-space:nowrap}

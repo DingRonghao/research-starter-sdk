@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
+import os
 import threading
-import urllib.request
+import time
 import webbrowser
 
 import uvicorn
 from openai_codex import AsyncCodex, CodexConfig
 
 from runner.config import load_settings
+from runner.instance import instance_info, probe_instance, select_port
 
 
 async def ensure_codex_login() -> None:
@@ -28,18 +29,27 @@ async def ensure_codex_login() -> None:
 
 
 def main() -> None:
-    url = "http://127.0.0.1:8765"
-    try:
-        with urllib.request.urlopen(f"{url}/health", timeout=1) as response:
-            if response.status == 200:
+    settings = load_settings()
+    identity = instance_info(settings.project_root)
+    port, already_running = select_port(identity)
+    url = f"http://127.0.0.1:{port}/?instance={identity.instance_id}"
+    if already_running:
+        webbrowser.open(url)
+        return
+    os.environ["RESEARCH_STARTER_INSTANCE_ID"] = identity.instance_id
+    os.environ["RESEARCH_STARTER_CHANNEL"] = identity.channel
+    os.environ["RESEARCH_STARTER_PORT"] = str(port)
+
+    def open_when_ready() -> None:
+        for _ in range(60):
+            if probe_instance(port, identity.instance_id):
                 webbrowser.open(url)
                 return
-    except OSError:
-        pass
+            time.sleep(0.25)
     # Always make Settings reachable, including when authentication is unavailable.
     # The web login manager owns the official browser-login lifecycle.
-    threading.Timer(1.5, lambda: webbrowser.open(url)).start()
-    uvicorn.run("web.app:app", host="127.0.0.1", port=8765, log_level="info")
+    threading.Thread(target=open_when_ready, daemon=True).start()
+    uvicorn.run("web.app:app", host="127.0.0.1", port=port, log_level="info")
 
 
 if __name__ == "__main__":

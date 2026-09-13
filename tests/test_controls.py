@@ -16,6 +16,7 @@ from runner.login import LoginManager
 from runner.preferences import save_preferences
 from runner.tasks import resume_job
 from runner.note_store import open_local, publish_cloud, save_local
+from runner.instance import instance_info, preferred_ports, select_port
 
 
 class ControlsTests(unittest.TestCase):
@@ -90,10 +91,45 @@ class ControlsTests(unittest.TestCase):
         launcher = (Path(__file__).parents[1] / 'Start Research Starter.cmd').read_text(encoding='utf-8')
         self.assertIn('runtime\\python\\python.exe', launcher)
         self.assertIn('runtime\\node\\node.exe', launcher)
+        self.assertIn('Start-Process', launcher)
+        self.assertIn('-WindowStyle Hidden', launcher)
+        self.assertNotIn('pythonw.exe', launcher)
+        self.assertNotIn('start "" /b "%PROJECT_PYTHON%"', launcher)
         self.assertNotIn('pip install', launcher)
         self.assertNotIn('npm', launcher.lower())
         self.assertNotIn('Bootstrap Research Starter.ps1', launcher)
         self.assertNotIn('C:\\mambaforge', launcher)
+
+    def test_brand_icons_and_release_shortcut_builder_are_present(self):
+        project = Path(__file__).parents[1]
+        self.assertTrue((project / 'web/static/app-icon.png').is_file())
+        self.assertTrue((project / 'web/static/favicon.ico').is_file())
+        self.assertTrue((project / 'assets/app-icon.ico').is_file())
+        base = (project / 'web/templates/base.html').read_text(encoding='utf-8')
+        self.assertIn('/static/favicon.ico', base)
+        self.assertIn('/static/app-icon.png', base)
+        build = (project / 'tools/Build Windows Release.ps1').read_text(encoding='utf-8')
+        self.assertIn('Create Launcher Shortcut.ps1', build)
+
+    def test_development_and_release_instances_use_separate_port_ranges(self):
+        (self.root / '.git').mkdir()
+        development = instance_info(self.root)
+        release_root = self.root / 'release-copy'
+        release_root.mkdir()
+        release = instance_info(release_root)
+        self.assertEqual('development', development.channel)
+        self.assertEqual(8765, preferred_ports(development)[0])
+        self.assertEqual('release', release.channel)
+        self.assertGreaterEqual(preferred_ports(release)[0], 8800)
+        self.assertNotEqual(development.instance_id, release.instance_id)
+
+    def test_launcher_never_reuses_a_foreign_instance(self):
+        info = instance_info(self.root)
+        with patch('runner.instance.probe_instance', return_value=False), \
+             patch('runner.instance.port_is_free', side_effect=[False, True]):
+            port, running = select_port(info)
+        self.assertEqual(preferred_ports(info)[1], port)
+        self.assertFalse(running)
 
     def test_runtime_paths_are_fixed_and_not_editable_preferences(self):
         self.assertEqual(self.root / 'runtime/python/python.exe', self.settings.python_exe)
@@ -145,6 +181,8 @@ class ControlsTests(unittest.TestCase):
         self.assertEqual('existing-thread', calls[0]['thread_id'])
         self.assertEqual('new-model', calls[0]['model'])
         self.assertEqual('high', calls[0]['effort'])
+        self.assertFalse(calls[0]['include_skill'])
+        self.assertIn('existing Docling Markdown/JSON', calls[0]['prompt'])
         self.assertEqual('Answer', job.read()['follow_ups'][0]['response'])
 
     def test_two_slides_revisions_keep_old_outputs_and_select_latest(self):

@@ -24,14 +24,23 @@ from runner.tasks import resume_job, run_existing_job
 from runner.preferences import OPTIONAL_PATHS, PATH_LABELS, app_info, bundled_runtime_info, save_preferences
 from runner.login import LoginManager
 from runner.note_store import initialize_local_vault, open_local, publish_cloud, save_local
+from runner.examples import seed_completed_examples
+from runner.model_providers import (
+    DEEPSEEK_MODEL, DEEPSEEK_PROVIDER, DEEPSEEK_REASONING_EFFORTS, OPENAI_PROVIDER, deepseek_configured,
+    delete_deepseek_key, load_deepseek_key, save_deepseek_key, test_deepseek_key,
+)
+from runner.instance import instance_info
 
 settings: Settings = load_settings()
+seed_completed_examples(settings)
+instance = instance_info(settings.project_root)
 _codex_cache: tuple[float, dict] | None = None
 login_manager = LoginManager()
 app = FastAPI(title="Research Starter", docs_url=None, redoc_url=None)
-ASSET_VERSION = "0.2.1.6"
+ASSET_VERSION = "0.2.2.1"
 templates = Jinja2Templates(directory=str(settings.project_root / "web" / "templates"))
 templates.env.globals["asset_version"] = ASSET_VERSION
+templates.env.globals["instance"] = instance
 app.mount("/static", StaticFiles(directory=str(settings.project_root / "web" / "static")), name="static")
 for vendor_name, vendor_path in {
     "quikchat": settings.project_root / "node_modules" / "quikchat" / "dist",
@@ -312,7 +321,17 @@ async def _get_codex_status(*, refresh: bool = False) -> dict:
     return value
 
 
-async def _validate_codex_selection(model: str, effort: str) -> None:
+async def _validate_codex_selection(model: str, effort: str, provider: str = OPENAI_PROVIDER) -> None:
+    if provider == DEEPSEEK_PROVIDER:
+        if not deepseek_configured(settings.project_root):
+            raise HTTPException(400, "请先在 Settings 中配置 DeepSeek API Key")
+        if model != DEEPSEEK_MODEL:
+            raise HTTPException(400, "DeepSeek 当前仅提供 DeepSeek Flash")
+        if effort not in DEEPSEEK_REASONING_EFFORTS:
+            raise HTTPException(400, "DeepSeek Flash 的推理等级必须为 none、low、high 或 max")
+        return
+    if provider != OPENAI_PROVIDER:
+        raise HTTPException(400, "Unsupported model provider")
     if not model and not effort:
         return
     status = await _get_codex_status()
@@ -354,6 +373,7 @@ async def settings_page(request: Request):
         },
         "labels": PATH_LABELS, "optional_paths": OPTIONAL_PATHS,
         "runtime": bundled_runtime_info(settings), "info": app_info(settings.project_root),
+        "deepseek_configured": deepseek_configured(settings.project_root),
     })
 
 
@@ -372,6 +392,37 @@ async def update_settings(request: Request):
         raise HTTPException(400, str(exc)) from exc
     _codex_cache = None
     return {"message": "已保存并生效；原配置已备份。已有文件不会自动搬迁。"}
+
+
+@app.get("/api/deepseek/status")
+async def deepseek_status(check: bool = False):
+    configured = deepseek_configured(settings.project_root)
+    result = {"configured": configured, "model": DEEPSEEK_MODEL}
+    if check and configured:
+        try:
+            result.update(await asyncio.to_thread(test_deepseek_key, load_deepseek_key(settings.project_root)))
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+    return result
+
+
+@app.post("/api/deepseek/key")
+async def set_deepseek_key(request: Request):
+    _require_idle()
+    payload = await request.json()
+    key = payload.get("api_key", "") if isinstance(payload, dict) else ""
+    try:
+        save_deepseek_key(settings.project_root, key)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"message": "DeepSeek API Key 已安全保存在本机；可点击“测试连接”单独验证。"}
+
+
+@app.delete("/api/deepseek/key")
+async def remove_deepseek_key():
+    _require_idle()
+    delete_deepseek_key(settings.project_root)
+    return {"message": "已移除本机保存的 DeepSeek API Key。"}
 
 
 @app.get("/about", response_class=HTMLResponse)
@@ -412,17 +463,18 @@ async def submit_job(
     icloud_item: str = Form(""),
     model: str = Form(""),
     effort: str = Form(""),
+    provider: str = Form(OPENAI_PROVIDER),
     language: str = Form("zh"),
     files: list[UploadFile] = File(default=[]),
     ppt_template: UploadFile | None = File(default=None),
 ):
-    if login_manager.active:
+    if login_manager.active and provider == OPENAI_PROVIDER:
         raise HTTPException(409, "请先完成或取消 Codex 登录")
     if task not in {"paper-guide", "research-note", "research-slides"}:
         raise HTTPException(400, "Unsupported task")
     if language not in {"zh", "ja", "en"}:
         raise HTTPException(400, "Unsupported output language")
-    await _validate_codex_selection(model, effort)
+    await _validate_codex_selection(model, effort, provider)
     use_icloud = bool(icloud_item)
     if use_icloud:
         if settings.icloud_inbox_root is None:
@@ -451,6 +503,7 @@ async def submit_job(
     job.update(
         model=model or "runtime default",
         reasoning_effort=effort or "runtime default",
+        model_provider=provider,
         language=language,
     )
     if use_icloud:
@@ -511,7 +564,11 @@ async def follow_up(background: BackgroundTasks, job_id: str, question: str = Fo
         raise HTTPException(409, "当前会话尚不能追问，请等待任务或登录完成")
     if not question.strip():
         raise HTTPException(400, "请输入问题")
-    await _validate_codex_selection(model, effort)
+    provider = job.read().get("model_provider", OPENAI_PROVIDER)
+    if provider == OPENAI_PROVIDER:
+        await _validate_codex_selection(model, effort)
+    else:
+        await _validate_codex_selection(model or job.read().get("model", ""), effort, provider)
     if job.read().get("status") not in {"completed", "failed"}:
         raise HTTPException(409, "已有追问正在执行")
     if model:
@@ -527,7 +584,7 @@ async def revise_slides(background: BackgroundTasks, job_id: str, feedback: str 
     state = job.read()
     if state["task"] != "research-slides":
         raise HTTPException(400, "Only Research Slides supports this operation")
-    if state.get("status") not in {"completed", "failed"} or not state.get("thread_id") or login_manager.active:
+    if state.get("status") not in {"completed", "failed"} or not state.get("thread_id") or (login_manager.active and state.get("model_provider", OPENAI_PROVIDER) == OPENAI_PROVIDER):
         raise HTTPException(409, "请等待当前任务或登录完成")
     if not feedback.strip():
         raise HTTPException(400, "请输入修改建议")
@@ -647,4 +704,7 @@ async def open_folder(job_id: str):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "host": "127.0.0.1"}
+    return {
+        "status": "ok", "host": "127.0.0.1", "instance_id": instance.instance_id,
+        "channel": instance.channel, "project_root": str(instance.project_root),
+    }

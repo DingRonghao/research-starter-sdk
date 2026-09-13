@@ -1,3 +1,3 @@
 # Research Slides example output
 
-Use `Inbox/research-slides/public-sample` to generate the editable PPTX locally. Generated decks are intentionally not pre-bundled here so the beta package stays small and demonstrates the exact runtime pipeline installed on the target host.
+The bundled synthetic PPTX demonstrates the completed-project preview and download flow without using model quota. Use `Inbox/research-slides/public-sample` when you want to run the full generation pipeline yourself.

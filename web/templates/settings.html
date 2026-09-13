@@ -18,6 +18,12 @@
   <button id="login-codex">登录 / 重新登录其他账户</button>
   <div id="login-panel" hidden><p id="login-state" role="status"></p><a id="login-link" target="_blank" rel="noopener noreferrer" hidden>打开 OpenAI 登录页面</a><button id="cancel-login" class="secondary">取消登录</button></div>
 </section>
+<section class="control-panel">
+  <div><h2>DeepSeek API</h2><p class="muted">可选。配置后可使用 DeepSeek Flash（当前 V4.1 Flash）及其四档推理等级，不需要 Codex 付费账户。密钥使用 Windows 当前用户加密后只保存在本机，不进入 Git、配置文件或发布包。</p></div>
+  <label>API Key<input id="deepseek-key" type="password" autocomplete="off" placeholder="{{ '已配置；填写新密钥可替换' if deepseek_configured else 'sk-…' }}"></label>
+  <p id="deepseek-state" role="status">{{ '已配置' if deepseek_configured else '尚未配置' }}</p>
+  <div><button id="save-deepseek" type="button">保存密钥</button><button id="test-deepseek" class="secondary" type="button" {% if not deepseek_configured %}disabled{% endif %}>测试连接</button><button id="remove-deepseek" class="secondary" type="button" {% if not deepseek_configured %}disabled{% endif %}>移除密钥</button></div>
+</section>
 {% endblock %}
 {% block scripts %}<script type="module" src="/static/settings.js?v={{ asset_version }}"></script>
 <script>
@@ -36,5 +42,9 @@ async function loadStatus(refresh = false) {
 }
 document.querySelector('#refresh-codex').addEventListener('click', () => loadStatus(true));
 loadStatus();
+const deepseekState=document.querySelector('#deepseek-state');
+document.querySelector('#save-deepseek').addEventListener('click',async()=>{const api_key=document.querySelector('#deepseek-key').value;deepseekState.textContent='正在安全保存…';const response=await fetch('/api/deepseek/key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key})});const data=await response.json();deepseekState.textContent=data.message||data.detail;if(response.ok){document.querySelector('#deepseek-key').value='';document.querySelector('#test-deepseek').disabled=false;document.querySelector('#remove-deepseek').disabled=false;}});
+document.querySelector('#test-deepseek').addEventListener('click',async()=>{deepseekState.textContent='正在测试…';const response=await fetch('/api/deepseek/status?check=true');const data=await response.json();deepseekState.textContent=response.ok?(data.model_available?'连接正常，DeepSeek Flash 可用。':'连接正常，但账户返回的模型列表中暂未出现 DeepSeek Flash。'):(data.detail||'测试失败');});
+document.querySelector('#remove-deepseek').addEventListener('click',async()=>{if(!confirm('移除本机保存的 DeepSeek API Key？'))return;const response=await fetch('/api/deepseek/key',{method:'DELETE'});const data=await response.json();deepseekState.textContent=data.message||data.detail;if(response.ok){document.querySelector('#test-deepseek').disabled=true;document.querySelector('#remove-deepseek').disabled=true;}});
 </script>
 {% endblock %}

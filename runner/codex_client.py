@@ -8,6 +8,8 @@ from typing import Any
 from openai_codex import ApprovalMode, AsyncCodex, CodexConfig, Sandbox, SkillInput, TextInput
 from openai_codex.generated.v2_all import GetAccountRateLimitsResponse, ReasoningEffort
 
+from .model_providers import DEEPSEEK_PROVIDER, load_deepseek_key, provider_overrides
+
 
 def _json(value: Any) -> dict[str, Any]:
     return value.model_dump(mode="json", by_alias=True)
@@ -34,9 +36,14 @@ async def codex_status(codex_home: Path, project_root: Path) -> dict[str, Any]:
 
 
 class CodexRunner:
-    def __init__(self, codex_home: Path, project_root: Path) -> None:
+    def __init__(self, codex_home: Path, project_root: Path, model_provider: str = "openai") -> None:
         env = {"HOME": str(codex_home.parent), "CODEX_HOME": str(codex_home)}
-        self._client = AsyncCodex(CodexConfig(cwd=str(project_root), env=env))
+        if model_provider == DEEPSEEK_PROVIDER:
+            env["DEEPSEEK_API_KEY"] = load_deepseek_key(project_root)
+        self.model_provider = model_provider
+        self._client = AsyncCodex(CodexConfig(
+            cwd=str(project_root), env=env, config_overrides=provider_overrides(model_provider, project_root),
+        ))
 
     async def __aenter__(self) -> "CodexRunner":
         await self._client.__aenter__()
@@ -55,6 +62,7 @@ class CodexRunner:
         thread_id: str | None = None,
         model: str | None = None,
         effort: str | None = None,
+        include_skill: bool = True,
     ):
         reasoning_effort = ReasoningEffort(effort) if effort else None
         if thread_id:
@@ -63,15 +71,20 @@ class CodexRunner:
                 cwd=str(cwd),
                 sandbox=Sandbox.workspace_write,
                 approval_mode=ApprovalMode.auto_review,
+                model_provider=self.model_provider,
             )
         else:
             thread = await self._client.thread_start(
                 cwd=str(cwd),
                 sandbox=Sandbox.workspace_write,
                 approval_mode=ApprovalMode.auto_review,
+                model_provider=self.model_provider,
             )
+        inputs = [TextInput(prompt)]
+        if include_skill:
+            inputs.insert(0, SkillInput(name=skill_name, path=str(skill_path)))
         result = await thread.run(
-            [SkillInput(name=skill_name, path=str(skill_path)), TextInput(prompt)],
+            inputs,
             cwd=str(cwd),
             sandbox=Sandbox.workspace_write,
             approval_mode=ApprovalMode.auto_review,

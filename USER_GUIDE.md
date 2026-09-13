@@ -1,6 +1,16 @@
 # 开始使用
 
-完整解压 GitHub Release 中的 Windows ZIP，然后双击 **Start Research Starter.cmd**。Python 3.12、Node.js 和应用依赖已经包含在发布包内，不需要安装、选择或配置系统 Python/Node。浏览器打开本地首页后，首次使用再进入 **Settings** 检查素材、成品与 Obsidian 的可选路径，并查看 Codex 账户状态。未登录时点击“登录 / 重新登录其他账户”，在 OpenAI 官方页面完成登录，再回到本页。
+完整解压 GitHub Release 中的 Windows ZIP，然后双击带应用图标的 **Research Starter** 快捷方式；`Start Research Starter.cmd` 是兼容备用入口。Python 3.12、Node.js 和应用依赖已经包含在发布包内，不需要安装、选择或配置系统 Python/Node。浏览器打开本地首页后，首次使用再进入 **Settings** 检查素材、成品与 Obsidian 的可选路径，并查看 Codex 账户状态。未登录时点击“登录 / 重新登录其他账户”，在 OpenAI 官方页面完成登录，再回到本页。
+
+软件允许开发版和一个或多个发布版同时存在。启动器会按项目根目录生成实例标识并选择独立端口，不会把其他副本的 `/health` 误认成自己。页面顶部始终显示“本地开发版”或“发布版”及当前根目录；如果需要确认打开了哪个副本，以这里显示的绝对路径为准。
+
+首次启动后，项目库会直接显示 Paper Guide、Research Note 与 Research Slides 各一个“内置完成示例”。它们用于检查 PDF、Markdown、PPTX 的预览和下载界面，不会发起模型请求。删除这些示例后，后续启动不会自动重新创建。
+
+## 模型提供方
+
+任务页可以选择 **OpenAI Codex** 或 **DeepSeek API**。OpenAI 模式使用 Settings 中显示的 Codex 账户，并提供账户模型、推理等级和用量信息。
+
+使用 DeepSeek 前，在 Settings 的 DeepSeek API 区域填写 API Key。保存与联网测试相互独立：软件先使用 Windows 当前用户加密保存，用户可再点击“测试连接”访问 DeepSeek 官方模型接口；界面不会回显密钥，Git 和发布包也不会包含它。DeepSeek 模式固定使用模型 ID `deepseek-flash`，当前对应 V4.1 Flash；可选择关闭思考、低、高（默认）或最大四档推理等级。不要求登录 Codex，也不要求 Codex 付费账户；免费 Codex 账户不会参与或阻塞 DeepSeek 请求。DeepSeek 模式不显示 Codex 的五小时/一周用量，API 费用与余额请在 DeepSeek 控制台查看。
 
 ## Paper Guide：一边读，一边讨论
 
@@ -8,6 +18,7 @@
 2. 可填写阅读重点，选择输出语言、模型与推理等级，然后开始阅读。
 3. 导读完成后，左侧显示对话，右侧显示 PDF。可以滚动、缩放原文，并在左侧继续追问页码、图表或公式。
 4. 阅读区上方显示账户用量，以及下一次追问采用的模型和推理等级。修改选择从下一次发送开始生效。
+5. 首轮会加载 Paper Guide Skill 并生成一次性导读；后续问题继续使用同一个 Codex 会话，但不重复发送完整 Skill。系统会要求 Agent 回查当前项目已有的 Docling Markdown/JSON，以原文解析结果约束回答。
 
 聊天支持常见 LaTeX 公式：行内使用 `$E=mc^2$` 或 `\(E=mc^2\)`；独立公式使用 `$$...$$` 或 `\[...\]`。不支持的命令会保留源文字，便于核对。
 

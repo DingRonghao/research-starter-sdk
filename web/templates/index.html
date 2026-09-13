@@ -6,7 +6,7 @@
 <section class="job-library">
 {% for task, title in [('paper-guide','Paper Guide'),('research-note','Research Note'),('research-slides','Research Slides')] %}
 <div class="job-column"><h3>{{ title }} <span>{{ jobs_by_task[task]|length }}</span></h3><div class="job-stack">
-{% for job in jobs_by_task[task] %}<article class="job-card" data-job-id="{{ job.job_id }}"><a href="/jobs/{{ job.job_id }}"><strong>{{ job.display_title }}</strong><small>{{ job.created_at }} · {{ job.job_id }}</small><span class="status-pill">{{ job.status }}</span></a><div class="job-card-actions"><button class="icon-button star-job" title="星标" aria-label="星标项目">{{ '★' if job.starred else '☆' }}</button><button class="icon-button rename-job" title="修改项目名称" aria-label="修改项目名称">改名</button><button class="icon-button danger delete-job" title="删除任务记录" aria-label="删除任务记录">删除</button></div></article>
+{% for job in jobs_by_task[task] %}<article class="job-card" data-job-id="{{ job.job_id }}"><a href="/jobs/{{ job.job_id }}"><strong>{{ job.display_title }}</strong><small>{{ '内置完成示例' if job.is_example else job.created_at ~ ' · ' ~ job.job_id }}</small><span class="status-pill">{{ job.status }}</span></a><div class="job-card-actions"><button class="icon-button star-job" title="星标" aria-label="星标项目">{{ '★' if job.starred else '☆' }}</button><button class="icon-button rename-job" title="修改项目名称" aria-label="修改项目名称">改名</button><button class="icon-button danger delete-job" title="删除任务记录" aria-label="删除任务记录">删除</button></div></article>
 {% else %}<p class="empty-state">暂无项目</p>{% endfor %}</div></div>
 {% endfor %}</section>
 {% endblock %}

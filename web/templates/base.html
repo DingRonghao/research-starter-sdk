@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Research Starter{% endblock %}</title>
+  <title>{% block title %}Research Starter{% endblock %} · {{ instance.label }}</title>
+  <link rel="icon" href="/static/favicon.ico?v={{ asset_version }}" sizes="any">
+  <link rel="apple-touch-icon" href="/static/app-icon.png?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/style.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/components.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/workspaces.css?v={{ asset_version }}">
@@ -11,9 +13,10 @@
   <link rel="stylesheet" href="/static/history-v2.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/vendor/katex/katex.min.css?v={{ asset_version }}">
   <link rel="stylesheet" href="/static/controls.css?v={{ asset_version }}">
+  <link rel="stylesheet" href="/static/instance.css?v={{ asset_version }}">
 </head>
 <body>
-  <header><a href="/">Research Starter</a><nav><a href="/settings">Settings</a><a href="/about">About</a><a href="/guide">使用指南</a></nav></header>
+  <header><div class="instance-brand"><a class="brand-link" href="/"><img src="/static/app-icon.png?v={{ asset_version }}" alt="" width="34" height="34"><span>Research Starter</span></a><span class="instance-badge instance-{{ instance.channel }}">{{ instance.label }}</span><span class="instance-root" title="{{ instance.project_root }}">{{ instance.project_root }}</span></div><nav><a href="/settings">Settings</a><a href="/about">About</a><a href="/guide">使用指南</a></nav></header>
   <main>{% block content %}{% endblock %}</main>
   {% block scripts %}{% endblock %}
 </body>

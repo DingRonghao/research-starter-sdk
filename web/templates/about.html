@@ -1,5 +1,5 @@
 {% extends "base.html" %}
 {% block content %}<a class="back" href="/">← 返回</a><h1>About</h1>
 <section class="control-panel"><h2>Research Starter</h2><p>连接论文阅读、研究笔记与学术演示的本地科研工作台。</p>
-<dl><dt>版本</dt><dd>{{ info.version }} · 本地开发版</dd><dt>制作者</dt><dd>{{ info.author }}</dd><dt>GitHub</dt><dd>{% if info.github_url %}<a href="{{ info.github_url }}" target="_blank" rel="noopener noreferrer">项目仓库</a>{% else %}暂未提供{% endif %}</dd></dl>
+<dl><dt>版本</dt><dd>{{ info.version }} · 内部测试发行版</dd><dt>制作者</dt><dd>{{ info.author }}</dd><dt>GitHub</dt><dd><a href="{{ info.github_url }}" target="_blank" rel="noopener noreferrer">项目仓库与下载</a></dd></dl>
 <p>基于 Codex Python SDK、FastAPI、QuikChat、KaTeX、PDF.js、Marked、DOMPurify、PptxGenJS 与 PPTX Renderer 构建。Research Starter 是独立项目。</p><a href="/guide">阅读使用指南 →</a></section>{% endblock %}

@@ -38,9 +38,10 @@
   </section>
   <section class="control-panel codex-controls">
     <div>
-      <h2>Codex 设置</h2>
-      <p class="muted" id="codex-summary">正在读取当前账户的模型与用量…</p>
+      <h2>模型提供方</h2>
+      <p class="muted" id="codex-summary">正在读取可用模型与账户状态…</p>
     </div>
+    <label>提供方<select name="provider" id="provider"><option value="openai">OpenAI Codex</option><option value="deepseek">DeepSeek API</option></select></label>
     <label>模型<select name="model" id="model"><option value="">正在加载…</option></select></label>
     <label>推理等级<select name="effort" id="effort"><option value="">正在加载…</option></select></label>
   </section>
@@ -52,8 +53,10 @@
 <script>
 const modelSelect = document.querySelector('#model');
 const effortSelect = document.querySelector('#effort');
+const providerSelect = document.querySelector('#provider');
 const codexSummary = document.querySelector('#codex-summary');
 let codexModels = [];
+let providerRequest = 0;
 
 function usageText(window, fallback) {
   if (!window) return `${fallback}：不可用`;
@@ -63,6 +66,10 @@ function usageText(window, fallback) {
 }
 
 function updateEfforts() {
+  if (providerSelect.value === 'deepseek') {
+    setDeepSeekEfforts();
+    return;
+  }
   const model = codexModels.find(item => item.model === modelSelect.value);
   effortSelect.innerHTML = '';
   for (const option of model?.supportedReasoningEfforts || []) {
@@ -75,11 +82,23 @@ function updateEfforts() {
   localStorage.setItem('research-starter-model', modelSelect.value);
 }
 
-async function loadCodexStatus() {
+function setDeepSeekEfforts() {
+  const remembered = localStorage.getItem('research-starter-deepseek-effort') || 'high';
+  const options = [
+    ['none', '关闭思考（最快）'],
+    ['low', '低（快速）'],
+    ['high', '高（官方默认）'],
+    ['max', '最大（最深入）'],
+  ];
+  effortSelect.replaceChildren(...options.map(([value, label]) => new Option(label, value, false, value === remembered)));
+}
+
+async function loadCodexStatus(requestId = providerRequest) {
   try {
     const response = await fetch('/api/codex/status');
     if (!response.ok) throw new Error('status unavailable');
     const status = await response.json();
+    if (requestId !== providerRequest || providerSelect.value !== 'openai') return;
     codexModels = status.models.data.filter(item => !item.hidden);
     const remembered = localStorage.getItem('research-starter-model');
     modelSelect.innerHTML = '';
@@ -101,13 +120,34 @@ async function loadCodexStatus() {
   }
 }
 
+async function updateProvider() {
+  const requestId = ++providerRequest;
+  localStorage.setItem('research-starter-provider', providerSelect.value);
+  if (providerSelect.value === 'deepseek') {
+    const status = await fetch('/api/deepseek/status').then(response => response.json());
+    if (requestId !== providerRequest || providerSelect.value !== 'deepseek') return;
+    modelSelect.innerHTML = '<option value="deepseek-flash">DeepSeek Flash（当前 V4.1 Flash）</option>';
+    setDeepSeekEfforts();
+    codexSummary.textContent = status.configured
+      ? 'DeepSeek API 已配置；模型 ID 为 deepseek-flash，当前对应 V4.1 Flash。推理等级默认“高”。'
+      : '尚未配置 DeepSeek API Key，请先前往 Settings。';
+  } else {
+    await loadCodexStatus(requestId);
+  }
+}
+
 modelSelect.addEventListener('change', updateEfforts);
-effortSelect.addEventListener('change', () => localStorage.setItem('research-starter-effort', effortSelect.value));
+providerSelect.addEventListener('change', updateProvider);
+effortSelect.addEventListener('change', () => localStorage.setItem(
+  providerSelect.value === 'deepseek' ? 'research-starter-deepseek-effort' : 'research-starter-effort',
+  effortSelect.value,
+));
 document.querySelectorAll('[name="language"]').forEach(input => {
   input.checked = input.value === (localStorage.getItem('research-starter-language') || 'zh');
   input.addEventListener('change', () => localStorage.setItem('research-starter-language', input.value));
 });
-loadCodexStatus();
+providerSelect.value = localStorage.getItem('research-starter-provider') || 'openai';
+updateProvider();
 
 document.querySelector('.folder-picker')?.addEventListener('click', () => document.querySelector('.folder-input').click());
 document.querySelector('.folder-input')?.addEventListener('change', event => {

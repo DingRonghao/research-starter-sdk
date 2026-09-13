@@ -19,11 +19,15 @@ PATH_LABELS = {
     "obsidian_exe": "Obsidian 可执行文件（可选）",
 }
 OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root", "obsidian_exe"}
-VERSION = "1.0.0-internal.5"
+VERSION = "1.1.0-internal.1"
 
 
 def app_info(root: Path) -> dict:
-    return {"version": VERSION, "author": "Ding Ronghao与CodeX", "github_url": ""}
+    return {
+        "version": VERSION,
+        "author": "Ding Ronghao与CodeX",
+        "github_url": "https://github.com/DingRonghao/research-starter-sdk",
+    }
 
 
 def bundled_runtime_info(current: Settings) -> dict:

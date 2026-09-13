@@ -101,6 +101,7 @@ async def run_task(
     model: str | None = None,
     effort: str | None = None,
     language: str = "zh",
+    model_provider: str = "openai",
 ) -> JobWorkspace:
     if task not in TASKS:
         raise ValueError(f"Unsupported task: {task}")
@@ -120,6 +121,7 @@ async def run_task(
         model=model,
         effort=effort,
         language=language,
+        model_provider=model_provider,
     )
 
 
@@ -133,9 +135,11 @@ async def run_existing_job(
     model: str | None = None,
     effort: str | None = None,
     language: str = "zh",
+    model_provider: str | None = None,
 ) -> JobWorkspace:
     settings = settings or load_settings()
     task = job.read()["task"]
+    model_provider = model_provider or job.read().get("model_provider", "openai")
     if language not in LANGUAGES:
         raise ValueError(f"Unsupported language: {language}")
     cwd = settings.local_obsidian_vault if task == "research-note" else job.root
@@ -146,10 +150,11 @@ async def run_existing_job(
             stage="running_codex",
             model=model or "runtime default",
             reasoning_effort=effort or "runtime default",
+            model_provider=model_provider,
             language=language,
         )
         job.log("starting Codex skill turn")
-        async with CodexRunner(settings.codex_home, settings.project_root) as runner:
+        async with CodexRunner(settings.codex_home, settings.project_root, model_provider) as runner:
             actual_thread_id, result = await runner.run_skill(
                 skill_name=task,
                 skill_path=skill_path,
@@ -224,6 +229,7 @@ async def resume_job(
     effort = effort or (
         state.get("reasoning_effort") if state.get("reasoning_effort") != "runtime default" else None
     )
+    model_provider = state.get("model_provider", "openai")
     if task not in TASKS or not thread_id:
         raise ValueError("Job does not contain a resumable task and thread_id")
     cwd = settings.local_obsidian_vault if task == "research-note" else job.root
@@ -234,6 +240,19 @@ async def resume_job(
             raise ValueError(f"Unsupported resume operation: {operation}")
         job.update(status="running", stage=stages[operation], error=None)
         prompt = instructions
+        include_skill = True
+        if task == "paper-guide" and operation == "follow_up":
+            include_skill = False
+            prompt = (
+                "Continue the existing Paper Guide conversation and answer the user's new question directly. "
+                f"Respond in {LANGUAGES[state.get('language', 'zh')]}. "
+                f"Treat the PDF and the existing Docling Markdown/JSON under {job.temp} as the authoritative "
+                "source. Re-read the relevant parsed passages before making paper-specific factual claims, and "
+                "give page/section/figure/equation/table locations when useful. Reuse the existing parsed files; "
+                "do not rerun Docling unless they are missing or unreadable. Do not regenerate the initial "
+                "six-part reading guide unless the user explicitly asks for it. Preserve uncertainty rather than "
+                f"guessing.\n\nUser question:\n{instructions}"
+            )
         if task == "research-note":
             prompt = _skill_prompt(task, job, instructions, settings, state.get("language", "zh"))
         if operation == "slides_revision":
@@ -246,7 +265,7 @@ async def resume_job(
                 "append a full revised deck to the previous combined deck. Validate the resulting PPTX."
             )
         job.log("starting Codex follow-up turn")
-        async with CodexRunner(settings.codex_home, settings.project_root) as runner:
+        async with CodexRunner(settings.codex_home, settings.project_root, model_provider) as runner:
             actual_thread_id, result = await runner.run_skill(
                 skill_name=task,
                 skill_path=skill_path,
@@ -255,6 +274,7 @@ async def resume_job(
                 thread_id=thread_id,
                 model=model,
                 effort=effort,
+                include_skill=include_skill,
             )
         response, generated_title = _response_and_title(result)
         updates = dict(

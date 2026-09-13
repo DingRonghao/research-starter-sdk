@@ -24,7 +24,7 @@ if not exist "%~dp0node_modules\pptxgenjs" (
 )
 
 set "PATH=%~dp0runtime\node;%~dp0runtime\python;%~dp0runtime\python\Scripts;%PATH%"
-start "" /b "%PROJECT_PYTHON%" -m web.launcher
+powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Process -FilePath '%PROJECT_PYTHON%' -ArgumentList '-m','web.launcher' -WorkingDirectory '%~dp0' -WindowStyle Hidden"
 exit /b 0
 
 :fail
