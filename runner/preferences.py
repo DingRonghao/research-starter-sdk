@@ -19,7 +19,7 @@ PATH_LABELS = {
     "obsidian_exe": "Obsidian 可执行文件（可选）",
 }
 OPTIONAL_PATHS = {"icloud_inbox_root", "icloud_output_root", "obsidian_vault", "obsidian_write_root", "obsidian_exe"}
-VERSION = "1.1.0-internal.1"
+VERSION = "1.1.0-internal.2"
 
 
 def app_info(root: Path) -> dict:

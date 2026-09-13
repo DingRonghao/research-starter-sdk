@@ -100,7 +100,7 @@ class ControlsTests(unittest.TestCase):
         self.assertNotIn('Bootstrap Research Starter.ps1', launcher)
         self.assertNotIn('C:\\mambaforge', launcher)
 
-    def test_brand_icons_and_release_shortcut_builder_are_present(self):
+    def test_brand_icons_and_portable_launcher_builder_are_present(self):
         project = Path(__file__).parents[1]
         self.assertTrue((project / 'web/static/app-icon.png').is_file())
         self.assertTrue((project / 'web/static/favicon.ico').is_file())
@@ -109,7 +109,11 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('/static/favicon.ico', base)
         self.assertIn('/static/app-icon.png', base)
         build = (project / 'tools/Build Windows Release.ps1').read_text(encoding='utf-8')
-        self.assertIn('Create Launcher Shortcut.ps1', build)
+        self.assertIn('ResearchStarterLauncher.cs', build)
+        self.assertIn('/target:winexe', build)
+        launcher_source = (project / 'tools/ResearchStarterLauncher.cs').read_text(encoding='utf-8')
+        self.assertIn('AppDomain.CurrentDomain.BaseDirectory', launcher_source)
+        self.assertIn('CreateNoWindow = true', launcher_source)
 
     def test_development_and_release_instances_use_separate_port_ranges(self):
         (self.root / '.git').mkdir()

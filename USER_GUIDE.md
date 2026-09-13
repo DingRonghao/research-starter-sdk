@@ -1,6 +1,6 @@
 # 开始使用
 
-完整解压 GitHub Release 中的 Windows ZIP，然后双击带应用图标的 **Research Starter** 快捷方式；`Start Research Starter.cmd` 是兼容备用入口。Python 3.12、Node.js 和应用依赖已经包含在发布包内，不需要安装、选择或配置系统 Python/Node。浏览器打开本地首页后，首次使用再进入 **Settings** 检查素材、成品与 Obsidian 的可选路径，并查看 Codex 账户状态。未登录时点击“登录 / 重新登录其他账户”，在 OpenAI 官方页面完成登录，再回到本页。
+完整解压 GitHub Release 中的 Windows ZIP，然后双击带应用图标的 **Research Starter.exe**；它会从当前解压目录启动对应副本，`Start Research Starter.cmd` 是兼容备用入口。Python 3.12、Node.js 和应用依赖已经包含在发布包内，不需要安装、选择或配置系统 Python/Node。浏览器打开本地首页后，首次使用再进入 **Settings** 检查素材、成品与 Obsidian 的可选路径，并查看 Codex 账户状态。未登录时点击“登录 / 重新登录其他账户”，在 OpenAI 官方页面完成登录，再回到本页。
 
 软件允许开发版和一个或多个发布版同时存在。启动器会按项目根目录生成实例标识并选择独立端口，不会把其他副本的 `/health` 误认成自己。页面顶部始终显示“本地开发版”或“发布版”及当前根目录；如果需要确认打开了哪个副本，以这里显示的绝对路径为准。
 

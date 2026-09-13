@@ -1,10 +1,10 @@
 # Research Starter SDK
 
-当前内部测试版本：`1.1.0-internal.1`。项目仓库与发行包：https://github.com/DingRonghao/research-starter-sdk
+当前内部测试版本：`1.1.0-internal.2`。项目仓库与发行包：https://github.com/DingRonghao/research-starter-sdk
 
 当前发布版本：**1.0.0-internal.5**（内部测试 1.0 便携运行时版）。
 
-Windows 使用入口：下载 GitHub Release 中的完整 Windows ZIP，完整解压后双击带应用图标的 `Research Starter.lnk`；`Start Research Starter.cmd` 保留为兼容入口。Launcher 会以隐藏窗口启动包内 `runtime/python/python.exe`，并固定使用包内 `runtime/node/node.exe`；这样服务及其 Codex/Node 子进程共享隐藏控制台，不需要安装或选择系统 Python、Node/npm，也不会修改这些系统环境。页面只监听本机 `127.0.0.1`。开发副本优先使用 8765，发布副本使用独立的 8800–8899 端口；若端口被占用会自动寻找备用端口，并用根目录指纹确认打开的是当前副本。
+Windows 使用入口：下载 GitHub Release 中的完整 Windows ZIP，完整解压后双击带应用图标的 `Research Starter.exe`；它始终从自身所在目录启动对应副本，`Start Research Starter.cmd` 保留为兼容入口。Launcher 会以隐藏窗口启动包内 `runtime/python/python.exe`，并固定使用包内 `runtime/node/node.exe`；这样服务及其 Codex/Node 子进程共享隐藏控制台，不需要安装或选择系统 Python、Node/npm，也不会修改这些系统环境。页面只监听本机 `127.0.0.1`。开发副本优先使用 8765，发布副本使用独立的 8800–8899 端口；若端口被占用会自动寻找备用端口，并用根目录指纹确认打开的是当前副本。
 
 三个入口：
 

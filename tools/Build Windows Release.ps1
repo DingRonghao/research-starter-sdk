@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.1.0-internal.1'
+    [string]$Version = '1.1.0-internal.2'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +8,15 @@ $dist = Join-Path $project 'dist'
 $name = "Research-Starter-Windows-$Version"
 $stage = Join-Path $dist $name
 $archive = Join-Path $dist "$name.zip"
+$launcherExe = Join-Path $project 'Research Starter.exe'
+$launcherSource = Join-Path $project 'tools\ResearchStarterLauncher.cs'
+$compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+
+if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+    throw "Windows C# compiler is missing: $compiler"
+}
+& $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll "/win32icon:$project\assets\app-icon.ico" "/out:$launcherExe" $launcherSource
+if ($LASTEXITCODE -ne 0) { throw "Launcher compilation failed with exit code $LASTEXITCODE" }
 
 foreach ($required in @(
     (Join-Path $project 'runtime\python\python.exe'),
@@ -29,8 +38,6 @@ if ($LASTEXITCODE -gt 7) { throw "Application copy failed with robocopy exit cod
 if ($LASTEXITCODE -gt 7) { throw "Runtime copy failed with robocopy exit code $LASTEXITCODE" }
 & robocopy (Join-Path $project 'node_modules') (Join-Path $stage 'node_modules') /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Node dependency copy failed with robocopy exit code $LASTEXITCODE" }
-
-& (Join-Path $project 'tools\Create Launcher Shortcut.ps1') -ProjectRoot $stage
 
 Push-Location $dist
 try {
