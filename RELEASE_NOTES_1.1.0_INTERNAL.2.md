@@ -10,7 +10,7 @@
 - Paper Guide 改为同一会话内的论文导读与持续问答；完整 Skill 只在首轮加载，后续问题复用 Docling 解析结果以降低遗忘和幻觉。
 - Research Note 支持完整 Markdown 与图片预览、反复修订、本地 Obsidian 保存与检查，以及确认后机械复制到可选云端 Vault。
 - Research Slides 支持反复生成修订版、不同版本预览切换和统一命名下载，并支持可选 PPTX 模板。
-- 改进开发版与发行版实例隔离，避免浏览器打开错误副本。
+- 改进多副本启动识别，避免浏览器打开错误的项目目录。
 - 修复 Windows 后台启动方式，避免主服务及 Codex/Node 子进程显示控制台窗口。
 - 增加应用图标、浏览器图标和可随项目目录移动的 `Research Starter.exe` 图形启动器。
 - Settings 中的 iCloud 与云端 Obsidian 路径保持可选；内置 Python、Node 和项目依赖无需用户配置。
