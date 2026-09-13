@@ -1,6 +1,6 @@
 # Research Starter SDK
 
-由CodeX主力开发，本人大约仅负责提供token，以引用CodeX功能和预制skill为核心的的科研桌面端助手。现支持win x64版本，未来计划同步推出MacOS版本。
+由CodeX主力开发，本人大约仅负责提供token，以引用CodeX SDK和预制skill为核心的的科研桌面端助手。现支持win x64版本，未来计划同步推出MacOS版本。
 
 功能以本人科研需求为主，且业余精力有限，对于有些需求无法回应请谅解。
 
