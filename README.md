@@ -25,9 +25,12 @@
 2. 完整解压后，双击带应用图标的 `Research Starter.exe`。
 3. 首次使用时进入 **Settings**，按需配置素材、成品与 Obsidian 路径，并登录 Codex 或配置 DeepSeek API。
 
+每个任务页面都可直接拖入 PDF 或素材文件夹。上传内容会自动进入项目 Inbox；发行包也附带三套公开合成素材，供用户自行运行完整流程。
+
 Python 3.12、Codex SDK、Docling、Node.js 与所需项目依赖均已包含在发行包中，不需要安装或选择系统 Python/Node。iCloud 与 Obsidian 均为可选项，未配置时仍可使用本地上传、输出和预览功能。
 
 ## 使用文档
 
 - [完整使用指南](USER_GUIDE.md)
 - [本版本更新说明](RELEASE_NOTES_1.1.0_INTERNAL.2.md)
+- [Windows 启动器签名说明](CODE_SIGNING.md)

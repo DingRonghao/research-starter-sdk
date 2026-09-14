@@ -1,4 +1,4 @@
-openai-codex==0.147.0
+openai-codex==0.154.0
 docling==2.117.0
 fastapi==0.141.1
 jinja2==3.1.6

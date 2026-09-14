@@ -1,11 +1,27 @@
-# Polarization comparison
+# 偏振分析器扫描
 
-This release-safe example shows the expected Markdown output shape. A real task copies referenced images and animations into its configured local Obsidian Vault before any optional cloud publication.
+## 研究问题
 
-## Observation
+分析器角度依赖能否区分名义上的线偏振与圆偏振输入？基线扣除会怎样影响结论？
 
-Linear polarization varies with analyzer angle, while the synthetic circular-polarization case is approximately angle-independent.
+## 方法与材料
 
-## Caution
+使用 635 nm 合成光源，以 15° 步长旋转线偏振分析器。每个角度汇总 5 次模拟读数；遮光状态给出 0.030 的归一化探测器偏置。完整数据见 `measurements.csv`。
 
-This is demonstration text, not an experimental conclusion.
+![[public-sample/figures/polarization-pattern.svg]]
+
+## 直接观察
+
+- 线偏振序列在约 30° 达到最大值，在约 120° 达到最小值。
+- 圆偏振序列保持在 0.48-0.52 之间，没有明显的双瓣角度结构。
+- 扣除基线后，线偏振可见度约为 0.91。
+
+## 解释
+
+线偏振序列与 Malus 定律的定性趋势一致。圆偏振序列的近似平坦只能作为必要证据，不能单独证明输入态是理想圆偏振；快速漂移、探测器饱和或未分辨态平均也可能产生相似结果。
+
+## 局限与后续检查
+
+当前素材未提供分析器零点校准、探测器线性范围或波片延迟误差。后续应加入已知线偏振参考态，并重复进行正向与反向角度扫描以检查漂移和回程差。
+
+> 本笔记只使用公开合成数据，不代表真实实验结论。

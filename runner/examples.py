@@ -22,7 +22,7 @@ def _now() -> str:
 
 def seed_completed_examples(settings: Settings) -> list[str]:
     """Create missing examples only; never modify an existing job directory."""
-    marker = settings.project_root / ".runtime" / "examples-seeded-v2"
+    marker = settings.project_root / ".runtime" / "examples-seeded-v3"
     if marker.exists():
         return []
     created: list[str] = []
@@ -30,15 +30,12 @@ def seed_completed_examples(settings: Settings) -> list[str]:
         root = settings.local_jobs / job_id
         if root.exists():
             state_path = root / "job.json"
-            if task == "research-slides" and state_path.is_file():
-                state = json.loads(state_path.read_text(encoding="utf-8"))
-                sample_deck = settings.project_root / "Output" / task / "public-sample" / "temperature-scan-example.pptx"
-                if state.get("is_example") and sample_deck.is_file() and not state.get("outputs"):
-                    destination = root / "output" / sample_deck.name
-                    shutil.copy2(sample_deck, destination)
-                    state.update(outputs=[str(destination)], latest_pptx=str(destination))
-                    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-            continue
+            if not state_path.is_file():
+                continue
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if not state.get("is_example"):
+                continue
+            shutil.rmtree(root)
         input_dir, output_dir, temp_dir = root / "input", root / "output", root / "temp"
         input_dir.mkdir(parents=True)
         output_dir.mkdir()

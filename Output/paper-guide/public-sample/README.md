@@ -1,3 +1,33 @@
-# Paper Guide example output
+# 偏振分析器角度扫描导读
 
-Paper Guide returns its first reading guide directly into the conversation and keeps subsequent discussion in the same task. It intentionally does not export a Markdown guide file. Run the matching public PDF from `Inbox/paper-guide/public-sample` to create a local conversation example.
+## 这篇材料在研究什么
+
+材料比较名义线偏振态与圆偏振态经过旋转线偏振分析器后的强度变化。核心问题是：角度曲线能提供什么证据，以及哪些结论仍然依赖校准和控制实验。
+
+## 建议先掌握的公式
+
+线偏振理想模型为
+
+$$I(\theta)=I_0\cos^2(\theta-\theta_0)+b$$
+
+可见度定义为
+
+$$V=\frac{I_{max}-I_{min}}{I_{max}+I_{min}}$$
+
+其中 $b$ 是探测器偏置。基线处理会直接改变可见度估计，因此不能省略。
+
+## 方法与结果
+
+分析器从 0° 扫描到 180°，步长为 15°，每点包含 5 次合成重复。线偏振序列在约 30° 达到最大值、约 120° 达到最小值；圆偏振序列维持在 0.48-0.52。扣除 0.030 的遮光偏置后，线偏振可见度约为 0.91。
+
+## 证据边界
+
+线偏振曲线与 Malus 定律的定性趋势一致。近似平坦的圆偏振曲线并不能单独证明输入态为理想圆偏振，因为快速偏振漂移、探测器饱和、分析器失准或未分辨态平均都可能给出相似结果。
+
+## 阅读与追问建议
+
+1. 先核算基线扣除前后的可见度。
+2. 再逐点比较表格与 Malus 定律，寻找最大残差。
+3. 最后设计已知参考态校准和正反向角度扫描。
+
+后续可在同一对话中继续追问公式推导、替代解释和控制实验。若要自行测试完整流程，请选择 `Inbox/paper-guide/public-sample/synthetic-research-note.pdf`。材料全部为公开合成内容。

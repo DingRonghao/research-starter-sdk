@@ -6,25 +6,26 @@
 <form id="job-form" enctype="multipart/form-data">
   <input type="hidden" name="task" value="{{ task }}">
   {% if task == 'paper-guide' %}
-    <label>PDF<input type="file" name="files" accept="application/pdf" data-local-source></label>
-    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；可以直接上传本地 PDF。</p>{% endif %}
     <label>阅读备注（可选）<textarea name="instructions"></textarea></label>
   {% elif task == 'research-note' %}
-    <label>素材文件夹（必选）
-      <span class="folder-picker"><span class="folder-button">选择文件夹</span><span class="folder-status">未选择任何文件夹</span></span>
-      <input class="visually-hidden folder-input" type="file" name="files" webkitdirectory directory multiple data-local-source aria-label="选择素材文件夹">
-    </label>
-    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择素材文件夹（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；请选择本地素材文件夹。</p>{% endif %}
     <label>补充说明（可选）<textarea name="instructions" placeholder="例如：希望笔记回答的问题、整理重点或结构偏好"></textarea></label>
   {% else %}
-    <label>素材文件夹（必选）
-      <span class="folder-picker"><span class="folder-button">选择文件夹</span><span class="folder-status">未选择任何文件夹</span></span>
-      <input class="visually-hidden folder-input" type="file" name="files" webkitdirectory directory multiple data-local-source aria-label="选择素材文件夹">
-    </label>
-    {% if icloud_enabled %}<label>或从 iCloud Inbox 选择素材文件夹（可选）<select name="icloud_item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">iCloud 素材入口未启用；请选择本地素材文件夹。</p>{% endif %}
     <label>PPT 模板（可选）<input type="file" name="ppt_template" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"><span class="muted">上传后会保留模板已有页面与主题，并在其后追加内容。</span></label>
     <label>内容 / 页面逻辑<textarea name="instructions" required></textarea></label>
   {% endif %}
+  <section class="inbox-source-panel">
+    <div class="drop-zone" id="source-drop-zone" tabindex="0" role="button" aria-label="{{ '拖入或选择 PDF' if task == 'paper-guide' else '拖入或选择素材文件夹' }}">
+      <strong>{{ '拖入 PDF' if task == 'paper-guide' else '拖入素材文件夹' }}</strong>
+      <span>或点击这里从电脑选择。素材会自动复制到项目 Inbox，再作为本次任务来源。</span>
+      <span class="drop-status" id="source-status">{{ '尚未选择 PDF' if task == 'paper-guide' else '尚未选择素材文件夹' }}</span>
+    </div>
+    <input class="visually-hidden" id="source-input" type="file" name="files" {% if task == 'paper-guide' %}accept="application/pdf,.pdf"{% else %}webkitdirectory directory multiple{% endif %} data-local-source>
+    <label>或选择项目 Inbox 中已有的{{ ' PDF' if task == 'paper-guide' else '素材文件夹' }}
+      <select name="inbox_item" id="inbox-item"><option value="">不选择</option>{% for item in inbox_items %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+      <span class="muted">对应位置：Inbox/{{ task }}/。发行包自带的公开测试素材也在这里。</span>
+    </label>
+    {% if icloud_enabled %}<label>或从外部素材库选择（可选）<select name="icloud_item" id="icloud-item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">外部素材入口未启用；仍可拖放、上传或选择项目 Inbox 中的内容。</p>{% endif %}
+  </section>
   <section class="control-panel">
     <div>
       <h2>输出语言</h2>
@@ -58,11 +59,28 @@ const codexSummary = document.querySelector('#codex-summary');
 let codexModels = [];
 let providerRequest = 0;
 
-function usageText(window, fallback) {
-  if (!window) return `${fallback}：不可用`;
-  const remaining = Math.max(0, 100 - window.usedPercent);
-  const reset = window.resetsAt ? new Date(window.resetsAt * 1000).toLocaleString() : '未知';
-  return `${fallback}：剩余 ${remaining}%（重置 ${reset}）`;
+function durationLabel(minutes) {
+  if (!Number.isFinite(minutes)) return '用量窗口';
+  if (minutes % 10080 === 0) return `${minutes / 10080} 周`;
+  if (minutes % 1440 === 0) return `${minutes / 1440} 天`;
+  if (minutes % 60 === 0) return `${minutes / 60} 小时`;
+  return `${minutes} 分钟`;
+}
+
+function usageSummary(usage) {
+  const multi = usage?.rateLimitsByLimitId || {};
+  const buckets = Object.keys(multi).length ? Object.values(multi) : (usage?.rateLimits ? [usage.rateLimits] : []);
+  if (!buckets.length) return '账户用量暂不可用';
+  return buckets.map(bucket => {
+    const plan = bucket.planType ? `账户：${bucket.planType}` : 'Codex';
+    const windows = [bucket.primary, bucket.secondary].filter(Boolean).map(value => {
+      const label = durationLabel(value.windowDurationMins);
+      const remaining = Number.isFinite(value.usedPercent) ? Math.max(0, 100 - value.usedPercent) : null;
+      const reset = value.resetsAt ? new Date(value.resetsAt * 1000).toLocaleString() : '未知';
+      return `${label}剩余 ${remaining === null ? '未知' : `${remaining}%`}（重置 ${reset}）`;
+    });
+    return `${plan} · ${windows.length ? windows.join(' · ') : '当前没有可显示的周期限额'}`;
+  }).join(' ｜ ');
 }
 
 function updateEfforts() {
@@ -111,8 +129,7 @@ async function loadCodexStatus(requestId = providerRequest) {
     }
     if (!modelSelect.value && codexModels.length) modelSelect.value = codexModels[0].model;
     updateEfforts();
-    const limits = status.usage.rateLimits || {};
-    codexSummary.textContent = `${usageText(limits.primary, '5 小时')} · ${usageText(limits.secondary, '一周')}`;
+    codexSummary.textContent = usageSummary(status.usage);
   } catch (_) {
     modelSelect.innerHTML = '<option value="">运行时默认</option>';
     effortSelect.innerHTML = '<option value="">运行时默认</option>';
@@ -149,30 +166,72 @@ document.querySelectorAll('[name="language"]').forEach(input => {
 providerSelect.value = localStorage.getItem('research-starter-provider') || 'openai';
 updateProvider();
 
-document.querySelector('.folder-picker')?.addEventListener('click', () => document.querySelector('.folder-input').click());
-document.querySelector('.folder-input')?.addEventListener('change', event => {
-  const first = event.target.files[0];
-  const folder = first?.webkitRelativePath?.split('/')[0];
-  document.querySelector('.folder-status').textContent = folder
-    ? `${folder}（${event.target.files.length} 个文件）`
-    : '未选择任何文件夹';
+const sourceInput = document.querySelector('#source-input');
+const dropZone = document.querySelector('#source-drop-zone');
+const sourceStatus = document.querySelector('#source-status');
+const inboxItem = document.querySelector('#inbox-item');
+const icloudItem = document.querySelector('#icloud-item');
+let droppedFiles = [];
+
+function showSource(files) {
+  const first = files[0];
+  const root = first?.path?.split('/')[0] || first?.file?.name;
+  sourceStatus.textContent = root ? `${root}（${files.length} 个文件）` : '{{ "尚未选择 PDF" if task == "paper-guide" else "尚未选择素材文件夹" }}';
+  if (files.length) { inboxItem.value = ''; if (icloudItem) icloudItem.value = ''; }
+}
+
+async function readEntry(entry, prefix = '') {
+  if (entry.isFile) return new Promise((resolve, reject) => entry.file(file => resolve([{file, path: prefix + file.name}]), reject));
+  if (!entry.isDirectory) return [];
+  const nextPrefix = prefix + entry.name + '/';
+  const reader = entry.createReader();
+  const children = [];
+  while (true) {
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) break;
+    children.push(...batch);
+  }
+  return (await Promise.all(children.map(child => readEntry(child, nextPrefix)))).flat();
+}
+
+dropZone.addEventListener('click', () => sourceInput.click());
+dropZone.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); sourceInput.click(); } });
+for (const eventName of ['dragenter', 'dragover']) dropZone.addEventListener(eventName, event => { event.preventDefault(); dropZone.classList.add('is-dragging'); });
+for (const eventName of ['dragleave', 'drop']) dropZone.addEventListener(eventName, event => { event.preventDefault(); dropZone.classList.remove('is-dragging'); });
+dropZone.addEventListener('drop', async event => {
+  try {
+    const entries = [...event.dataTransfer.items].map(item => item.webkitGetAsEntry?.()).filter(Boolean);
+    droppedFiles = entries.length
+      ? (await Promise.all(entries.map(entry => readEntry(entry)))).flat()
+      : [...event.dataTransfer.files].map(file => ({file, path: file.name}));
+    showSource(droppedFiles);
+  } catch (error) {
+    droppedFiles = [];
+    sourceStatus.textContent = `无法读取拖入内容：${error.message}`;
+  }
 });
+sourceInput.addEventListener('change', event => {
+  droppedFiles = [...event.target.files].map(file => ({file, path: file.webkitRelativePath || file.name}));
+  showSource(droppedFiles);
+});
+inboxItem.addEventListener('change', () => { if (inboxItem.value) { droppedFiles = []; sourceInput.value = ''; if (icloudItem) icloudItem.value = ''; showSource([]); } });
+icloudItem?.addEventListener('change', () => { if (icloudItem.value) { droppedFiles = []; sourceInput.value = ''; inboxItem.value = ''; showSource([]); } });
 
 document.querySelector('#job-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const message = document.querySelector('#message');
   const form = event.target;
-  const fileInput = form.querySelector('[data-local-source]');
   const cloudSelect = form.querySelector('[name="icloud_item"]');
-  if (!fileInput.files.length && !cloudSelect.value) {
+  const selectedFiles = droppedFiles.length ? droppedFiles : [...sourceInput.files].map(file => ({file, path: file.webkitRelativePath || file.name}));
+  if (!selectedFiles.length && !inboxItem.value && !cloudSelect?.value) {
     message.textContent = '{{ "请选择一个素材文件夹" if task in ["research-note", "research-slides"] else "请选择一个 PDF" }}';
     return;
   }
   message.textContent = 'Preparing…';
   const formData = new FormData(form);
   formData.delete('files');
-  for (const file of fileInput.files) {
-    formData.append('files', file, file.webkitRelativePath || file.name);
+  for (const item of selectedFiles) {
+    formData.append('files', item.file, item.path);
   }
   const response = await fetch('/api/jobs', {method: 'POST', body: formData});
   const data = await response.json();

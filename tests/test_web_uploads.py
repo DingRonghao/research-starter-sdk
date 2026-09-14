@@ -62,6 +62,7 @@ class FolderUploadTests(unittest.TestCase):
         self.assertEqual(["materials"], [source.name for source in sources])
         self.assertEqual(b"A", (sources[0] / "papers" / "a.txt").read_bytes())
         self.assertEqual(b"B", (sources[0] / "images" / "b.png").read_bytes())
+        self.assertEqual(self.root / "Inbox" / "research-note", sources[0].parent)
 
     def test_research_slides_rejects_loose_files(self) -> None:
         with self.assertRaisesRegex(HTTPException, "uploaded folder"):
@@ -108,6 +109,28 @@ class FolderUploadTests(unittest.TestCase):
         job_input = web_app.settings.local_jobs / job_id / "input" / "materials"
         self.assertEqual(b"A", (job_input / "a.txt").read_bytes())
         self.assertEqual(b"B", (job_input / "sub" / "b.txt").read_bytes())
+        self.assertEqual(b"A", (self.root / "Inbox" / "research-note" / "materials" / "a.txt").read_bytes())
+
+    def test_endpoint_can_run_from_existing_project_inbox(self) -> None:
+        source = self.root / "Inbox" / "research-note" / "existing-sample"
+        source.mkdir(parents=True)
+        (source / "notes.md").write_text("sample", encoding="utf-8")
+        with TestClient(web_app.app) as client:
+            page = client.get("/tasks/research-note")
+            response = client.post(
+                "/api/jobs",
+                data={"task": "research-note", "inbox_item": "existing-sample"},
+            )
+        self.assertIn("existing-sample", page.text)
+        self.assertEqual(202, response.status_code)
+        job_input = web_app.settings.local_jobs / response.json()["job_id"] / "input" / "existing-sample" / "notes.md"
+        self.assertEqual("sample", job_input.read_text(encoding="utf-8"))
+
+    def test_local_inbox_rejects_escape(self) -> None:
+        outside = self.root / "outside"
+        outside.mkdir()
+        with self.assertRaisesRegex(ValueError, "escapes"):
+            web_app._resolve_local_inbox_item("research-note", "../../outside")
 
     def test_endpoint_rejects_icloud_file_for_folder_task(self) -> None:
         loose_file = web_app.settings.icloud_inbox_root / "research-slides" / "loose.txt"

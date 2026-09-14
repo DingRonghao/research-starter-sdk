@@ -34,3 +34,36 @@
   white-space: nowrap !important;
   border: 0 !important;
 }
+
+.inbox-source-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dce1e8;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.drop-zone {
+  display: grid;
+  gap: 7px;
+  min-height: 150px;
+  place-content: center;
+  padding: 24px;
+  border: 2px dashed #9eacc0;
+  border-radius: 12px;
+  background: #f7f9fc;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
+}
+
+.drop-zone:hover,.drop-zone:focus-visible,.drop-zone.is-dragging {
+  border-color: #2457a6;
+  background: #eef4ff;
+  outline: none;
+}
+
+.drop-zone.is-dragging { transform: scale(1.01); }
+.drop-zone span { color: #657084; font-weight: 400; }
+.drop-zone .drop-status { color: #2457a6; font-weight: 650; }

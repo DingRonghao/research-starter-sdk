@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="520" viewBox="0 0 900 520">
+  <rect width="900" height="520" fill="#ffffff"/>
+  <g stroke="#d4dbe3" stroke-width="1"><path d="M90 60V440H840"/><path d="M90 345H840M90 250H840M90 155H840M277 60V440M465 60V440M652 60V440M840 60V440"/></g>
+  <polyline fill="none" stroke="#2457a6" stroke-width="5" points="90,144 215,60 340,151 465,341 590,421 715,337 840,140"/>
+  <polyline fill="none" stroke="#d56a2b" stroke-width="5" points="90,250 215,246 340,254 465,250 590,242 715,258 840,250"/>
+  <g font-family="Segoe UI,Arial" font-size="20" fill="#26364a"><text x="360" y="495">Analyzer angle (deg)</text><text transform="translate(28 330) rotate(-90)">Normalized intensity</text><text x="690" y="92" fill="#2457a6">Linear</text><text x="690" y="122" fill="#d56a2b">Circular</text><text x="82" y="470">0</text><text x="450" y="470">90</text><text x="820" y="470">180</text></g>
+</svg>

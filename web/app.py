@@ -37,7 +37,7 @@ instance = instance_info(settings.project_root)
 _codex_cache: tuple[float, dict] | None = None
 login_manager = LoginManager()
 app = FastAPI(title="Research Starter", docs_url=None, redoc_url=None)
-ASSET_VERSION = "0.2.2.1"
+ASSET_VERSION = "0.3.0.0"
 templates = Jinja2Templates(directory=str(settings.project_root / "web" / "templates"))
 templates.env.globals["asset_version"] = ASSET_VERSION
 templates.env.globals["instance"] = instance
@@ -172,6 +172,45 @@ def _icloud_items(task: str) -> list[str]:
     return [str(path.relative_to(root)) for path in sorted(root.iterdir(), key=lambda p: p.name.lower())]
 
 
+def _local_inbox_root(task: str) -> Path:
+    return settings.project_root / "Inbox" / task
+
+
+def _local_inbox_items(task: str) -> list[str]:
+    root = _local_inbox_root(task)
+    root.mkdir(parents=True, exist_ok=True)
+    if task == "paper-guide":
+        return [
+            path.relative_to(root).as_posix()
+            for path in sorted(root.rglob("*"), key=lambda item: item.as_posix().lower())
+            if path.is_file() and path.suffix.lower() == ".pdf"
+        ]
+    return [path.name for path in sorted(root.iterdir(), key=lambda item: item.name.lower()) if path.is_dir()]
+
+
+def _resolve_local_inbox_item(task: str, item: str) -> Path:
+    root = _local_inbox_root(task).resolve()
+    source = (root / item).resolve(strict=True)
+    try:
+        source.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Inbox item escapes the task folder") from exc
+    _validate_source_shape(task, [source])
+    return source
+
+
+def _available_inbox_path(candidate: Path) -> Path:
+    if not candidate.exists():
+        return candidate
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for index in range(1, 1000):
+        suffix = f"-{stamp}" if index == 1 else f"-{stamp}-{index}"
+        alternative = candidate.with_name(f"{candidate.stem}{suffix}{candidate.suffix}")
+        if not alternative.exists():
+            return alternative
+    raise OSError("Unable to allocate a unique Inbox name")
+
+
 def _safe_upload_parts(filename: str) -> tuple[str, ...]:
     normalized = filename.replace("\\", "/")
     if normalized.startswith("/") or ":" in normalized:
@@ -194,6 +233,7 @@ def _validate_source_shape(task: str, sources: list[Path]) -> None:
 async def _save_uploads(task: str, files: list[UploadFile]) -> list[Path]:
     staging = settings.project_root / ".runtime" / "uploads" / uuid.uuid4().hex
     staging.mkdir(parents=True, exist_ok=False)
+    installed: Path | None = None
     try:
         uploaded_paths: list[Path] = []
         seen: set[tuple[str, ...]] = set()
@@ -221,10 +261,24 @@ async def _save_uploads(task: str, files: list[UploadFile]) -> list[Path]:
                 raise HTTPException(400, f"{task} requires one uploaded folder, not loose files")
             sources = [staging / next(iter(top_levels))]
         _validate_source_shape(task, sources)
-        return sources
+        inbox_root = _local_inbox_root(task)
+        inbox_root.mkdir(parents=True, exist_ok=True)
+        if task == "paper-guide":
+            installed = _available_inbox_path(inbox_root / sources[0].name)
+            shutil.copy2(sources[0], installed)
+        else:
+            installed = _available_inbox_path(inbox_root / sources[0].name)
+            shutil.copytree(sources[0], installed)
+        return [installed]
     except Exception:
-        shutil.rmtree(staging, ignore_errors=True)
+        if installed is not None:
+            if installed.is_dir():
+                shutil.rmtree(installed, ignore_errors=True)
+            elif installed.exists():
+                installed.unlink(missing_ok=True)
         raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 async def _execute(job: JobWorkspace, instructions: str, icloud: bool) -> None:
@@ -355,7 +409,12 @@ async def task_page(request: Request, task: str):
     return templates.TemplateResponse(
         request,
         "task.html",
-        {"task": task, "icloud_items": _icloud_items(task), "icloud_enabled": settings.icloud_inbox_root is not None},
+        {
+            "task": task,
+            "inbox_items": _local_inbox_items(task),
+            "icloud_items": _icloud_items(task),
+            "icloud_enabled": settings.icloud_inbox_root is not None,
+        },
     )
 
 
@@ -460,6 +519,7 @@ async def submit_job(
     background: BackgroundTasks,
     task: str = Form(...),
     instructions: str = Form(""),
+    inbox_item: str = Form(""),
     icloud_item: str = Form(""),
     model: str = Form(""),
     effort: str = Form(""),
@@ -475,8 +535,16 @@ async def submit_job(
     if language not in {"zh", "ja", "en"}:
         raise HTTPException(400, "Unsupported output language")
     await _validate_codex_selection(model, effort, provider)
+    use_inbox = bool(inbox_item)
     use_icloud = bool(icloud_item)
-    if use_icloud:
+    if use_inbox and use_icloud:
+        raise HTTPException(400, "本地 Inbox 与 iCloud Inbox 只能选择一个来源")
+    if use_inbox:
+        try:
+            sources = [_resolve_local_inbox_item(task, inbox_item)]
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            raise HTTPException(400, f"Invalid or unavailable local Inbox input: {exc}") from exc
+    elif use_icloud:
         if settings.icloud_inbox_root is None:
             raise HTTPException(400, "iCloud 素材入口未配置，请改用本地上传或先在 Settings 中填写")
         try:
