@@ -65,10 +65,13 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
     if task == "research-slides":
         template_path = job.read().get("template_path")
         template_instruction = (
-            f"An immutable PPTX template is provided at {template_path}. Preserve every existing template "
-            "slide and its master/theme/branding. Generate a separate content deck in the job temp directory, "
-            "then use the Skill's append_to_template.py to append the generated content slides to a copy of "
-            "the template under the job output directory. Never overwrite the template. "
+            f"A PPTX design template is provided at {template_path}. Treat its slides as a layout and visual "
+            "library, not as content that must all remain. Inspect every template slide, select only the layouts "
+            "needed for this presentation, duplicate or adapt those slides in a new working copy, replace their "
+            "placeholder/sample content, and remove every unused template slide. Preserve the selected slides' "
+            "masters, theme, typography, palette, repeated branding, spacing, and footer system. Never append a "
+            "separately styled deck after the intact template, and never leave sample text, unused example pages, "
+            "or an ending slide before content. Do not overwrite the uploaded template. "
             if template_path else
             "No template was supplied. Use the Skill's default minimal academic style. "
         )
@@ -76,7 +79,7 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
             language_instruction + "Use the supplied research-slides Skill. Inventory every file under "
             f"{job.input}. Use the Skill's existing generate_slides.mjs and the project-local "
             f"Node dependencies. {template_instruction}Generate the final editable PPTX only under {job.output}. "
-            f"User instructions: {instructions}"
+            f"User instructions: {instructions or 'Infer the page structure conservatively from the text files and other materials in the input folder.'}"
         )
     note_root = note_root_relative(settings).as_posix()
     return (
@@ -261,8 +264,9 @@ async def resume_job(
                 f"\nRevise the latest deck {state.get('latest_pptx') or state.get('outputs', [])} using the feedback. "
                 f"Save the complete revised deck ONLY at {revision_path}. Keep all previous outputs intact. "
                 "Re-use the existing material and narrative unless feedback changes them. Preserve any supplied "
-                "template: regenerate the content portion and append it once to the ORIGINAL template, never "
-                "append a full revised deck to the previous combined deck. Validate the resulting PPTX."
+                "template: rebuild a complete working copy from the ORIGINAL template's selected layouts, replace "
+                "the relevant content, and remove unused template pages. Never append a separately styled deck to "
+                "either the original template or a previous result. Validate the resulting PPTX."
             )
         job.log("starting Codex follow-up turn")
         async with CodexRunner(settings.codex_home, settings.project_root, model_provider) as runner:

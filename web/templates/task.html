@@ -10,8 +10,19 @@
   {% elif task == 'research-note' %}
     <label>补充说明（可选）<textarea name="instructions" placeholder="例如：希望笔记回答的问题、整理重点或结构偏好"></textarea></label>
   {% else %}
-    <label>PPT 模板（可选）<input type="file" name="ppt_template" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"><span class="muted">上传后会保留模板已有页面与主题，并在其后追加内容。</span></label>
-    <label>内容 / 页面逻辑<textarea name="instructions" required></textarea></label>
+    <section class="inbox-source-panel template-source-panel">
+      <div class="drop-zone" id="template-drop-zone" tabindex="0" role="button" aria-label="拖入或选择 PPTX 模板">
+        <strong>拖入 PPTX 模板（可选）</strong>
+        <span>或点击这里选择。模板会复制到固定模板库，供以后任务重复调用。</span>
+        <span class="drop-status" id="template-status">尚未选择模板</span>
+      </div>
+      <input class="visually-hidden" id="template-input" type="file" name="ppt_template" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+      <label>或选择模板库中的已有模板
+        <select name="template_item" id="template-item"><option value="">不使用模板</option>{% for item in template_items %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+        <span class="muted">固定位置：Inbox/Templates/。这里选择的是单个 PPTX 文件，不是文件夹。</span>
+      </label>
+    </section>
+    <label>内容 / 页面逻辑（可选）<textarea name="instructions" placeholder="可留空；系统会优先读取素材文件夹内的 Markdown、TXT 等说明文件。"></textarea></label>
   {% endif %}
   <section class="inbox-source-panel">
     <div class="drop-zone" id="source-drop-zone" tabindex="0" role="button" aria-label="{{ '拖入或选择 PDF' if task == 'paper-guide' else '拖入或选择素材文件夹' }}">
@@ -171,6 +182,10 @@ const dropZone = document.querySelector('#source-drop-zone');
 const sourceStatus = document.querySelector('#source-status');
 const inboxItem = document.querySelector('#inbox-item');
 const icloudItem = document.querySelector('#icloud-item');
+const templateInput = document.querySelector('#template-input');
+const templateDropZone = document.querySelector('#template-drop-zone');
+const templateStatus = document.querySelector('#template-status');
+const templateItem = document.querySelector('#template-item');
 let droppedFiles = [];
 
 function showSource(files) {
@@ -216,6 +231,20 @@ sourceInput.addEventListener('change', event => {
 });
 inboxItem.addEventListener('change', () => { if (inboxItem.value) { droppedFiles = []; sourceInput.value = ''; if (icloudItem) icloudItem.value = ''; showSource([]); } });
 icloudItem?.addEventListener('change', () => { if (icloudItem.value) { droppedFiles = []; sourceInput.value = ''; inboxItem.value = ''; showSource([]); } });
+
+function setTemplateFile(file) {
+  if (!file) { templateInput.value = ''; templateStatus.textContent = '尚未选择模板'; return; }
+  if (!file.name.toLowerCase().endsWith('.pptx')) { templateInput.value = ''; templateStatus.textContent = '模板必须是一个 PPTX 文件'; return; }
+  const transfer = new DataTransfer(); transfer.items.add(file); templateInput.files = transfer.files;
+  templateStatus.textContent = file.name; templateItem.value = '';
+}
+templateDropZone?.addEventListener('click', () => templateInput.click());
+templateDropZone?.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); templateInput.click(); } });
+for (const eventName of ['dragenter', 'dragover']) templateDropZone?.addEventListener(eventName, event => { event.preventDefault(); templateDropZone.classList.add('is-dragging'); });
+for (const eventName of ['dragleave', 'drop']) templateDropZone?.addEventListener(eventName, event => { event.preventDefault(); templateDropZone.classList.remove('is-dragging'); });
+templateDropZone?.addEventListener('drop', event => { const files = [...event.dataTransfer.files]; setTemplateFile(files.length === 1 ? files[0] : null); if (files.length !== 1) templateStatus.textContent = '一次只能拖入一个 PPTX 模板'; });
+templateInput?.addEventListener('change', () => setTemplateFile(templateInput.files[0]));
+templateItem?.addEventListener('change', () => { if (templateItem.value) { templateInput.value = ''; templateStatus.textContent = `模板库：${templateItem.value}`; } else { templateStatus.textContent = '尚未选择模板'; } });
 
 document.querySelector('#job-form').addEventListener('submit', async (event) => {
   event.preventDefault();

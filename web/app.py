@@ -37,7 +37,8 @@ instance = instance_info(settings.project_root)
 _codex_cache: tuple[float, dict] | None = None
 login_manager = LoginManager()
 app = FastAPI(title="Research Starter", docs_url=None, redoc_url=None)
-ASSET_VERSION = "0.3.0.0"
+ASSET_VERSION = "0.3.0.1"
+SLIDES_TEMPLATE_LIBRARY = "Templates"
 templates = Jinja2Templates(directory=str(settings.project_root / "web" / "templates"))
 templates.env.globals["asset_version"] = ASSET_VERSION
 templates.env.globals["instance"] = instance
@@ -186,6 +187,32 @@ def _local_inbox_items(task: str) -> list[str]:
             if path.is_file() and path.suffix.lower() == ".pdf"
         ]
     return [path.name for path in sorted(root.iterdir(), key=lambda item: item.name.lower()) if path.is_dir()]
+
+
+def _template_library_root() -> Path:
+    root = settings.project_root / "Inbox" / SLIDES_TEMPLATE_LIBRARY
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _template_library_items() -> list[str]:
+    root = _template_library_root()
+    return [
+        path.name for path in sorted(root.iterdir(), key=lambda item: item.name.lower())
+        if path.is_file() and path.suffix.lower() == ".pptx"
+    ]
+
+
+def _resolve_template_library_item(item: str) -> Path:
+    root = _template_library_root().resolve()
+    source = (root / item).resolve(strict=True)
+    try:
+        source.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Template item escapes the project template library") from exc
+    if not source.is_file() or source.suffix.lower() != ".pptx":
+        raise ValueError("Template library item must be one PPTX file")
+    return source
 
 
 def _resolve_local_inbox_item(task: str, item: str) -> Path:
@@ -356,13 +383,24 @@ async def _save_ppt_template(job: JobWorkspace, upload: UploadFile) -> Path:
     parts = _safe_upload_parts(upload.filename)
     if len(parts) != 1 or Path(parts[0]).suffix.lower() != ".pptx":
         raise HTTPException(400, "PPT template must be one .pptx file")
-    destination = job.root / "template" / parts[0]
-    destination.parent.mkdir(parents=True, exist_ok=False)
-    with destination.open("wb") as handle:
+    library_destination = _available_inbox_path(_template_library_root() / parts[0])
+    with library_destination.open("wb") as handle:
         while chunk := await upload.read(1024 * 1024):
             handle.write(chunk)
-    if destination.stat().st_size == 0:
+    if library_destination.stat().st_size == 0:
+        library_destination.unlink(missing_ok=True)
         raise HTTPException(400, "PPT template is empty")
+    destination = job.root / "template" / library_destination.name
+    destination.parent.mkdir(parents=True, exist_ok=False)
+    shutil.copy2(library_destination, destination)
+    return destination
+
+
+def _copy_library_template_to_job(job: JobWorkspace, item: str) -> Path:
+    source = _resolve_template_library_item(item)
+    destination = job.root / "template" / source.name
+    destination.parent.mkdir(parents=True, exist_ok=False)
+    shutil.copy2(source, destination)
     return destination
 
 
@@ -412,6 +450,7 @@ async def task_page(request: Request, task: str):
         {
             "task": task,
             "inbox_items": _local_inbox_items(task),
+            "template_items": _template_library_items() if task == "research-slides" else [],
             "icloud_items": _icloud_items(task),
             "icloud_enabled": settings.icloud_inbox_root is not None,
         },
@@ -527,6 +566,7 @@ async def submit_job(
     language: str = Form("zh"),
     files: list[UploadFile] = File(default=[]),
     ppt_template: UploadFile | None = File(default=None),
+    template_item: str = Form(""),
 ):
     if login_manager.active and provider == OPENAI_PROVIDER:
         raise HTTPException(409, "请先完成或取消 Codex 登录")
@@ -563,11 +603,25 @@ async def submit_job(
         except (OSError, RuntimeError, ValueError) as exc:
             shutil.rmtree(job.root)
             raise HTTPException(400, f"无法准备项目本地 Obsidian：{exc}") from exc
-    if ppt_template and ppt_template.filename:
+    if template_item and ppt_template and ppt_template.filename:
+        shutil.rmtree(job.root)
+        raise HTTPException(400, "上传模板与模板库选择只能使用一种")
+    if template_item:
         if task != "research-slides":
+            shutil.rmtree(job.root)
+            raise HTTPException(400, "PPT template is only available for Research Slides")
+        try:
+            template_path = _copy_library_template_to_job(job, template_item)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            shutil.rmtree(job.root)
+            raise HTTPException(400, f"Invalid template library item: {exc}") from exc
+        job.update(template_path=str(template_path), template_library_item=template_item)
+    elif ppt_template and ppt_template.filename:
+        if task != "research-slides":
+            shutil.rmtree(job.root)
             raise HTTPException(400, "PPT template is only available for Research Slides")
         template_path = await _save_ppt_template(job, ppt_template)
-        job.update(template_path=str(template_path))
+        job.update(template_path=str(template_path), template_library_item=template_path.name)
     job.update(
         model=model or "runtime default",
         reasoning_effort=effort or "runtime default",

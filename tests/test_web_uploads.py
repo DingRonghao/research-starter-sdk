@@ -126,6 +126,17 @@ class FolderUploadTests(unittest.TestCase):
         job_input = web_app.settings.local_jobs / response.json()["job_id"] / "input" / "existing-sample" / "notes.md"
         self.assertEqual("sample", job_input.read_text(encoding="utf-8"))
 
+    def test_slides_template_library_is_reserved_from_materials(self) -> None:
+        materials = self.root / "Inbox" / "research-slides" / "experiment"
+        materials.mkdir(parents=True)
+        (materials / "brief.md").write_text("sample", encoding="utf-8")
+        library = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY
+        library.mkdir(parents=True)
+        (library / "academic.pptx").write_bytes(b"template")
+        self.assertEqual(["experiment"], web_app._local_inbox_items("research-slides"))
+        with self.assertRaises((ValueError, FileNotFoundError)):
+            web_app._resolve_local_inbox_item("research-slides", "../Templates")
+
     def test_local_inbox_rejects_escape(self) -> None:
         outside = self.root / "outside"
         outside.mkdir()
@@ -286,6 +297,41 @@ class FolderUploadTests(unittest.TestCase):
         template = Path(state["template_path"])
         self.assertEqual(b"pptx-template", template.read_bytes())
         self.assertEqual("template", template.parent.name)
+        saved = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY / "academic.pptx"
+        self.assertEqual(b"pptx-template", saved.read_bytes())
+
+    def test_slides_can_copy_existing_template_library_item(self) -> None:
+        library = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY
+        library.mkdir(parents=True)
+        (library / "reusable.pptx").write_bytes(b"reusable-template")
+        with TestClient(web_app.app) as client:
+            page = client.get("/tasks/research-slides")
+            response = client.post(
+                "/api/jobs",
+                data={"task": "research-slides", "instructions": "", "template_item": "reusable.pptx"},
+                files=[("files", ("materials/source.txt", b"source", "text/plain"))],
+            )
+        self.assertIn("reusable.pptx", page.text)
+        self.assertIn("内容 / 页面逻辑（可选）", page.text)
+        self.assertIn('id="template-drop-zone"', page.text)
+        self.assertNotIn('name="instructions" required', page.text)
+        self.assertEqual(202, response.status_code)
+        state = json.loads((web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8"))
+        self.assertEqual("reusable.pptx", state["template_library_item"])
+        self.assertEqual(b"reusable-template", Path(state["template_path"]).read_bytes())
+
+    def test_slides_prompt_uses_template_as_layout_library(self) -> None:
+        root = self.make_renderable_job("slides-template-prompt", "research-slides")
+        job = web_app.JobWorkspace(root)
+        template = root / "template" / "academic.pptx"
+        template.parent.mkdir()
+        template.write_bytes(b"fixture")
+        job.update(template_path=str(template))
+        prompt = runner_tasks._skill_prompt("research-slides", job, "", web_app.settings, "zh")
+        self.assertIn("layout and visual library", prompt)
+        self.assertIn("remove every unused template slide", prompt)
+        self.assertNotIn("Preserve every existing template slide", prompt)
+        self.assertNotIn("append_to_template.py", prompt)
 
     def test_paper_prompt_requires_direct_conversation_response(self) -> None:
         root = self.make_renderable_job("paper-prompt", "paper-guide")
