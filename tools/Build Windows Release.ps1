@@ -14,6 +14,24 @@ $archive = Join-Path $dist "$name.zip"
 $launcherSource = Join-Path $project 'tools\ResearchStarterLauncher.cs'
 $compiler = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 
+function Get-Sha256WithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$LiteralPath,
+        [int]$Attempts = 30,
+        [int]$DelayMilliseconds = 1000
+    )
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            return (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath -ErrorAction Stop).Hash
+        } catch {
+            if ($attempt -eq $Attempts) {
+                throw "Unable to calculate SHA-256 after $Attempts attempts: $LiteralPath. $($_.Exception.Message)"
+            }
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw "Windows C# compiler is missing: $compiler" }
 
 foreach ($required in @(
@@ -30,7 +48,7 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist (Join-Path $project 'assets\source') /XF config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist (Join-Path $project 'assets\source') /XF "Research Starter.exe" config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RELEASE_WORKFLOW.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Application copy failed with robocopy exit code $LASTEXITCODE" }
 foreach ($task in @('paper-guide', 'research-note', 'research-slides')) {
     foreach ($area in @('Inbox', 'Output')) {
@@ -47,6 +65,7 @@ foreach ($task in @('paper-guide', 'research-note', 'research-slides')) {
 if ($LASTEXITCODE -ne 0) { throw "Launcher compilation failed with exit code $LASTEXITCODE" }
 $launcher = Join-Path $stage 'Research Starter.exe'
 $thumbprint = $CertificateThumbprint.Replace(' ', '')
+$signatureLabel = 'Unsigned internal beta'
 if ($thumbprint) {
     $signTool = Get-Command signtool.exe -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source
     if (-not $signTool) {
@@ -63,6 +82,7 @@ if ($thumbprint) {
     if ($LASTEXITCODE -ne 0) { throw "Launcher signing failed with exit code $LASTEXITCODE" }
     & $signTool verify /pa /all $launcher
     if ($LASTEXITCODE -ne 0) { throw "Launcher signature verification failed with exit code $LASTEXITCODE" }
+    $signatureLabel = 'Authenticode signed'
 } elseif ($RequireSignature) {
     throw 'A trusted code-signing certificate thumbprint is required for this release build'
 } else {
@@ -73,6 +93,23 @@ if ($LASTEXITCODE -gt 7) { throw "Runtime copy failed with robocopy exit code $L
 & robocopy (Join-Path $project 'node_modules') (Join-Path $stage 'node_modules') /E /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Node dependency copy failed with robocopy exit code $LASTEXITCODE" }
 
+$launcherHash = Get-Sha256WithRetry -LiteralPath $launcher
+$noticePath = Join-Path $stage 'RELEASE-INTEGRITY.txt'
+@"
+Research Starter $Version
+Release status: $signatureLabel
+
+This internal beta may be unsigned. If Windows shows "Unknown publisher", verify that
+the package came from the official GitHub Releases page and compare its SHA-256 values
+with the checksums published beside the release. Do not use a copy from an unofficial source.
+
+Research Starter.exe SHA256:
+$launcherHash
+
+Official releases:
+https://github.com/DingRonghao/research-starter-sdk/releases
+"@ | Set-Content -LiteralPath $noticePath -Encoding UTF8
+
 Push-Location $dist
 try {
     & tar.exe -a -cf "$name.zip" $name
@@ -81,6 +118,28 @@ try {
     Pop-Location
 }
 
-$hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+$hash = Get-Sha256WithRetry -LiteralPath $archive
+$checksums = Join-Path $dist "$name-SHA256SUMS.txt"
+@"
+$hash  $name.zip
+$launcherHash  $name/Research Starter.exe
+"@ | Set-Content -LiteralPath $checksums -Encoding ASCII
+
+$releaseBody = Join-Path $dist "$name-RELEASE.md"
+@"
+## Download verification
+
+Release status: **$signatureLabel**.
+
+This is an internal beta. Download it only from this repository's GitHub Releases page. If Windows reports an unknown publisher, verify the SHA-256 checksum before running it. The project does not ask users to install a self-signed root certificate.
+
+``````text
+$hash  $name.zip
+$launcherHash  $name/Research Starter.exe
+``````
+"@ | Set-Content -LiteralPath $releaseBody -Encoding UTF8
+
 Write-Output "Release: $archive"
 Write-Output "SHA256: $hash"
+Write-Output "Checksums: $checksums"
+Write-Output "GitHub release text: $releaseBody"

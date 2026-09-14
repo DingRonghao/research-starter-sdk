@@ -29,8 +29,13 @@
 
 Python 3.12、Codex SDK、Docling、Node.js 与所需项目依赖均已包含在发行包中，不需要安装或选择系统 Python/Node。iCloud 与 Obsidian 均为可选项，未配置时仍可使用本地上传、输出和预览功能。
 
+## 内部测试版安全说明
+
+当前 Windows 内部测试版尚未使用公开可信的 Authenticode 证书签名，因此 Windows 可能显示“未知发布者”。请只从本仓库的 [GitHub Releases](https://github.com/DingRonghao/research-starter-sdk/releases) 下载。项目不会要求用户安装自签名根证书；同一版本发布后不会静默替换下载文件。从下一次发布开始，ZIP 将同时提供 `SHA256SUMS.txt` 供下载者核对；尚未附带该文件的既有 Release 不会为了补充校验值而静默替换。
+
 ## 使用文档
 
 - [完整使用指南](USER_GUIDE.md)
 - [本版本更新说明](RELEASE_NOTES_1.1.0_INTERNAL.2.md)
 - [Windows 启动器签名说明](CODE_SIGNING.md)
+- [维护者发行流程](RELEASE_WORKFLOW.md)
