@@ -6,10 +6,10 @@
 
 ## 最新版本
 
-当前发布版本：**1.1.0-internal.2**（内部测试版）。
+当前发布版本：**1.2.0-internal.1**（内部测试版）。
 
 - [下载 Windows 发行包](https://github.com/DingRonghao/research-starter-sdk/releases/latest)
-- [查看本次更新说明](RELEASE_NOTES_1.1.0_INTERNAL.2.md)
+- [查看本次更新说明](RELEASE_NOTES_1.2.0_INTERNAL.1.md)
 
 三个入口：
 
@@ -36,6 +36,10 @@ Python 3.12、Codex SDK、Docling、Node.js 与所需项目依赖均已包含在
 ## 使用文档
 
 - [完整使用指南](USER_GUIDE.md)
-- [本版本更新说明](RELEASE_NOTES_1.1.0_INTERNAL.2.md)
+- [本版本更新说明](RELEASE_NOTES_1.2.0_INTERNAL.1.md)
 - [Windows 启动器签名说明](CODE_SIGNING.md)
 - [维护者发行流程](RELEASE_WORKFLOW.md)
+
+## 本版本贡献
+
+Yutong Tian（[@Feather-Forest](https://github.com/Feather-Forest)）是 `1.2.0-internal.1` 的主要想法、修复方案与 PPT 模板贡献者。本版本的模型与用量适配、示例交互、模板工作流和多项体验修正均受益于其测试反馈与贡献。

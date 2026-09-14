@@ -330,6 +330,9 @@ class FolderUploadTests(unittest.TestCase):
         prompt = runner_tasks._skill_prompt("research-slides", job, "", web_app.settings, "zh")
         self.assertIn("layout and visual library", prompt)
         self.assertIn("remove every unused template slide", prompt)
+        self.assertIn("every editable slide title", prompt)
+        self.assertIn("calculation you can reproduce", prompt)
+        self.assertIn("language-consistency review", prompt)
         self.assertNotIn("Preserve every existing template slide", prompt)
         self.assertNotIn("append_to_template.py", prompt)
 

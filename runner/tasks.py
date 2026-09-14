@@ -64,11 +64,20 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
         )
     if task == "research-slides":
         template_path = job.read().get("template_path")
+        slides_quality_instruction = (
+            f"Use {LANGUAGES[language]} for every editable slide title, label, caption, footer, closing line, "
+            "and explanatory sentence. Treat the template as a visual/layout source rather than an evidence "
+            "source. Translate or replace its generic wording into the selected language; retain original "
+            "wording only for verified proper names, formulas, code, or a deliberate source quotation. Ground "
+            "each scientific statement, number, comparison, and citation in the supplied materials or in a "
+            "calculation you can reproduce from them. Before delivery, perform a separate evidence, calculation, "
+            "citation, template-residue, and language-consistency review of every slide. "
+        )
         template_instruction = (
             f"A PPTX design template is provided at {template_path}. Treat its slides as a layout and visual "
             "library, not as content that must all remain. Inspect every template slide, select only the layouts "
             "needed for this presentation, duplicate or adapt those slides in a new working copy, replace their "
-            "placeholder/sample content, and remove every unused template slide. Preserve the selected slides' "
+            "placeholder/sample content in the selected output language, and remove every unused template slide. Preserve the selected slides' "
             "masters, theme, typography, palette, repeated branding, spacing, and footer system. Never append a "
             "separately styled deck after the intact template, and never leave sample text, unused example pages, "
             "or an ending slide before content. Do not overwrite the uploaded template. "
@@ -76,7 +85,7 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
             "No template was supplied. Use the Skill's default minimal academic style. "
         )
         return (
-            language_instruction + "Use the supplied research-slides Skill. Inventory every file under "
+            language_instruction + slides_quality_instruction + "Use the supplied research-slides Skill. Inventory every file under "
             f"{job.input}. Use the Skill's existing generate_slides.mjs and the project-local "
             f"Node dependencies. {template_instruction}Generate the final editable PPTX only under {job.output}. "
             f"User instructions: {instructions or 'Infer the page structure conservatively from the text files and other materials in the input folder.'}"

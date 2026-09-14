@@ -120,6 +120,16 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('AppDomain.CurrentDomain.BaseDirectory', launcher_source)
         self.assertIn('CreateNoWindow = true', launcher_source)
 
+    def test_pptx_preview_renders_complete_slides_inside_its_scroll_container(self):
+        script = (Path(__file__).parents[1] / 'web/static/job.js').read_text(encoding='utf-8')
+        self.assertEqual('0.3.0.6', web.ASSET_VERSION)
+        self.assertIn('scrollContainer:container', script)
+        self.assertIn('listOptions:{windowed:false', script)
+        self.assertIn('lazySlides:false', script)
+        self.assertIn('lazyMedia:false', script)
+        self.assertIn('correctPptxThemeBackgrounds(pptxViewer,container)', script)
+        self.assertIn("master.colorMap.get(scheme)", script)
+
     def test_development_and_release_instances_use_separate_port_ranges(self):
         (self.root / '.git').mkdir()
         development = instance_info(self.root)

@@ -37,7 +37,7 @@ instance = instance_info(settings.project_root)
 _codex_cache: tuple[float, dict] | None = None
 login_manager = LoginManager()
 app = FastAPI(title="Research Starter", docs_url=None, redoc_url=None)
-ASSET_VERSION = "0.3.0.1"
+ASSET_VERSION = "0.3.0.6"
 SLIDES_TEMPLATE_LIBRARY = "Templates"
 templates = Jinja2Templates(directory=str(settings.project_root / "web" / "templates"))
 templates.env.globals["asset_version"] = ASSET_VERSION

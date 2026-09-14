@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.1.0-internal.2',
+    [string]$Version = '1.2.0-internal.1',
     [string]$CertificateThumbprint = '',
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
     [switch]$RequireSignature
