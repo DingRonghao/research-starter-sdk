@@ -2,7 +2,7 @@ import { marked } from '/vendor/marked/marked.esm.js?v=0.2.1.6';
 import DOMPurify from '/vendor/dompurify/purify.es.mjs?v=0.2.1.6';
 import {renderMarkdown} from '/static/markdown.js?v=0.2.1.6';
 import {selection} from '/static/session-controls.js?v=0.4.1.2';
-import {openPptxPreview} from '/static/pptx-preview.js?v=0.4.1.8';
+import {openPptxPreview} from '/static/pptx-preview.js?v=0.4.1.10';
 
 const initial=window.RESEARCH_JOB, jobId=initial.job_id, task=initial.task;
 let chat=null, chatSignature='', pdfLoaded=false, pptxLoaded=null, pptxViewer=null, selectedPptxIndex=null, pptxVersionsSignature='';

@@ -129,7 +129,7 @@ class ControlsTests(unittest.TestCase):
         root = Path(__file__).parents[1]
         script = (root / 'web/static/job.js').read_text(encoding='utf-8')
         preview = (root / 'web/static/pptx-preview.js').read_text(encoding='utf-8')
-        self.assertEqual('0.4.1.9', web.ASSET_VERSION)
+        self.assertEqual('0.4.1.10', web.ASSET_VERSION)
         self.assertIn('openPptxPreview(container,buffer)', script)
         self.assertIn('scrollContainer: container', preview)
         self.assertIn('listOptions: {windowed: false', preview)
