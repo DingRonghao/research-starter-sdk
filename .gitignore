@@ -10,6 +10,8 @@ __pycache__/
 *.lnk
 /tmp/
 /dist/
+/AGENTS.md
+/.development/
 
 # Keep the Inbox/Output product structure and selected public examples, while
 # leaving any additional local projects on disk but outside Git.

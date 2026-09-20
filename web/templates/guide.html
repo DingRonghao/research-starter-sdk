@@ -1,3 +1,3 @@
 {% extends "base.html" %}
-{% block content %}<a class="back" href="/">← 返回</a><h1>使用指南</h1><article id="guide-content" class="markdown-preview workspace-panel"></article>{% endblock %}
+{% block content %}<style>#guide-content{width:100%;max-width:1180px;margin-inline:auto}</style><a class="back" href="/">← 返回</a><h1>使用指南</h1><article id="guide-content" class="markdown-preview workspace-panel"></article>{% endblock %}
 {% block scripts %}<script id="guide-source" type="application/json">{{ content|tojson }}</script><script type="module">import {renderMarkdown} from '/static/markdown.js?v={{ asset_version }}';renderMarkdown(document.querySelector('#guide-content'),JSON.parse(document.querySelector('#guide-source').textContent));</script>{% endblock %}

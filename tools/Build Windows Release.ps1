@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.3.0-internal.1',
+    [string]$Version = '1.3.0-internal.2',
     [string]$CertificateThumbprint = '',
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
     [switch]$RequireSignature
@@ -48,7 +48,7 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist (Join-Path $project 'assets\source') /XF "Research Starter.exe" *.lnk config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RELEASE_WORKFLOW.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist .development (Join-Path $project 'assets\source') /XF "Research Starter.exe" *.lnk config.local.json .gitignore .gitattributes AGENTS.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Application copy failed with robocopy exit code $LASTEXITCODE" }
 foreach ($task in @('paper-guide', 'research-note', 'research-slides')) {
     foreach ($area in @('Inbox', 'Output')) {
@@ -145,12 +145,13 @@ $launcherHash  $name/Research Starter.exe
 "@ | Set-Content -LiteralPath $checksums -Encoding ASCII
 
 $releaseBody = Join-Path $dist "$name-RELEASE.md"
+$releaseStatusChinese = if ($signatureLabel -eq 'Authenticode signed') { '已通过 Authenticode 签名' } else { '未签名内部测试版' }
 @"
-## Download verification
+## 下载校验
 
-Release status: **$signatureLabel**.
+发行状态：**$releaseStatusChinese**。
 
-This is an internal beta. Download it only from this repository's GitHub Releases page. If Windows reports an unknown publisher, verify the SHA-256 checksum before running it. The project does not ask users to install a self-signed root certificate.
+这是内部测试版本。请只从本项目的 GitHub Releases 页面下载；如果 Windows 显示“未知发布者”，请在运行前核对 SHA-256。项目不会要求用户安装自签名根证书。
 
 ``````text
 $hash  $name.zip
