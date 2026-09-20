@@ -15,6 +15,7 @@ TASK_LABELS = {
     "paper-guide": "论文导读",
     "research-note": "研究笔记",
     "research-slides": "研究幻灯片",
+    "template-analysis": "模板载入",
 }
 
 

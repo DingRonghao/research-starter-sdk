@@ -1,0 +1,7 @@
+interface:
+  display_name: "PPT 模板载入"
+  short_description: "一次性建立 PPTX 模板的视觉与结构档案"
+  default_prompt: "Use $ppt-template-loader to analyse every page of the supplied PPTX visually and structurally, then write the reusable profile requested by the Runner."
+
+policy:
+  allow_implicit_invocation: true

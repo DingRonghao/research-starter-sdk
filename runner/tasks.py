@@ -16,6 +16,7 @@ from .config import Settings, load_settings
 from .exchange import publish_outputs, validate_icloud_sources
 from .jobs import JobWorkspace, create_job, default_job_title
 from .note_store import independent_target, note_root_relative, parse_preview
+from .template_assets import install_profile, validate_generated_profile
 
 TASKS = {"paper-guide", "research-note", "research-slides"}
 
@@ -63,7 +64,9 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
             f"User instructions: {instructions or 'Provide the standard six-part reading guide.'}"
         )
     if task == "research-slides":
-        template_path = job.read().get("template_path")
+        state = job.read()
+        template_path = state.get("template_path")
+        template_profile_path = state.get("template_profile_path")
         slides_quality_instruction = (
             f"Use {LANGUAGES[language]} for every editable slide title, label, caption, footer, closing line, "
             "and explanatory sentence. Treat the template as a visual/layout source rather than an evidence "
@@ -75,13 +78,17 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
         )
         template_instruction = (
             f"A PPTX design template is provided at {template_path}. Treat its slides as a layout and visual "
-            "library, not as content that must all remain. Inspect every template slide, select only the layouts "
-            "needed for this presentation, duplicate or adapt those slides in a new working copy, replace their "
+            f"library. Its completed template profile is at {template_profile_path}. Read "
+            "profile.json and profile.md as the authoritative page catalogue for layout selection, suitability, "
+            "capacity, object IDs, geometry, theme, and editing cautions. Do not render or visually re-analyse all "
+            "template pages and do not rebuild another whole-template object inventory. Select only the layouts "
+            "needed for this presentation from that profile, then use the original PPTX structure for targeted "
+            "editing. Duplicate or adapt those slides in a new working copy, replace their "
             "placeholder/sample content in the selected output language, and remove every unused template slide. Preserve the selected slides' "
             "masters, theme, typography, palette, repeated branding, spacing, and footer system. Never append a "
             "separately styled deck after the intact template, and never leave sample text, unused example pages, "
             "or an ending slide before content. Do not overwrite the uploaded template. "
-            if template_path else
+            if template_path and template_profile_path else
             "No template was supplied. Use the Skill's default minimal academic style. "
         )
         return (
@@ -100,6 +107,92 @@ def _skill_prompt(task: str, job: JobWorkspace, instructions: str, settings: Set
         "Every task is an independent note version; never propose appending to an existing note. "
         f"Job input is stored at {job.input}. User instructions: {instructions}"
     )
+
+
+async def run_template_analysis(
+    job: JobWorkspace,
+    template_library: Path,
+    *,
+    settings: Settings | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+    model_provider: str = "openai",
+) -> JobWorkspace:
+    """Run the expensive visual + structural template understanding once."""
+    settings = settings or load_settings()
+    state = job.read()
+    template = Path(state["analysis_template_path"]).resolve(strict=True)
+    output_directory = job.output / "template-profile"
+    prompt = (
+        "Use the supplied ppt-template-loader Skill. Analyse the single PPTX under "
+        f"{job.input}. The original library template is read-only. "
+        f"Write the complete reusable profile to {output_directory}. The required files are profile.json "
+        "and profile.md. This is the one-time high-quality template loading stage; inspect every slide both "
+        "visually and structurally, then integrate those views into a page catalogue useful to a later slide-"
+        "generation Agent. Do not create a presentation and do not analyse the research-slide sample materials."
+        " The profile.json field names form a strict machine protocol: use schema_version, template_name, "
+        "slide_count, and slides exactly as specified by the Skill. Do not rename, nest, alias, "
+        "or replace those fields (for example with profile_version, source, or page_catalogue)."
+    )
+    try:
+        job.update(status="running", stage="analysing_template", error=None)
+        job.log("starting one-time template analysis")
+        async with CodexRunner(settings.codex_home, settings.project_root, model_provider) as runner:
+            thread_id, result = await runner.run_skill(
+                skill_name="ppt-template-loader",
+                skill_path=settings.skills_root / "ppt-template-loader",
+                prompt=prompt,
+                cwd=job.root,
+                model=model,
+                effort=effort,
+            )
+            # Persist the thread before validating the machine-readable artifact. If the
+            # model used an inventive schema, repair it in the same context instead of
+            # repeating the expensive visual and structural inspection.
+            job.update(thread_id=thread_id)
+            try:
+                validate_generated_profile(output_directory, template)
+            except (ValueError, json.JSONDecodeError) as contract_error:
+                job.update(stage="repairing_template_profile")
+                job.log(f"template profile contract repair: {type(contract_error).__name__}: {contract_error}")
+                repair_prompt = (
+                    "The template inspection is complete, but profile.json failed the Runner's strict contract: "
+                    f"{contract_error}. Reuse your existing analysis; do not render, inspect, or analyse the PPTX "
+                    "again. Rewrite profile.json and profile.md in place using the exact schema from the supplied "
+                    "ppt-template-loader Skill. The required top-level keys are schema_version (integer 1), "
+                    "template_name, slide_count, slide_size, design_system, masters_and_layouts, "
+                    "slide_families, reusable_components, and "
+                    "slides. Each slides item must use slide_number, visual_role, suitable_for, not_suitable_for, "
+                    "capacity, search_keywords, layout_and_visual_description, objects, preserve, replace, and "
+                    "editing_cautions. Field aliases or alternative envelopes are invalid. Preserve the useful "
+                    "analysis already produced and only correct its serialization contract."
+                )
+                thread_id, result = await runner.run_skill(
+                    skill_name="ppt-template-loader",
+                    skill_path=settings.skills_root / "ppt-template-loader",
+                    prompt=repair_prompt,
+                    cwd=job.root,
+                    thread_id=thread_id,
+                    model=model,
+                    effort=effort,
+                    include_skill=False,
+                )
+                job.update(thread_id=thread_id)
+                validate_generated_profile(output_directory, template)
+        installed = install_profile(template_library, template, output_directory)
+        response, _ = _response_and_title(result)
+        job.update(
+            status="completed", stage="completed", thread_id=thread_id,
+            outputs=[str(output_directory / "profile.md"), str(output_directory / "profile.json")],
+            final_response=response,
+            template_profile_path=str(installed),
+        )
+        job.log("template analysis completed and installed")
+        return job
+    except Exception as exc:
+        job.update(status="failed", stage="template_analysis", error=f"{type(exc).__name__}: {exc}")
+        job.log(f"template analysis failed: {type(exc).__name__}: {exc}")
+        raise
 
 
 async def run_task(

@@ -8,7 +8,8 @@ from runner.config import load_settings
 from runner.examples import EXAMPLES, seed_completed_examples
 from runner.model_providers import (
     delete_deepseek_key, deepseek_configured, load_deepseek_key,
-    provider_overrides, save_deepseek_key,
+    delete_provider_key, load_provider_key, provider_configured, provider_overrides,
+    provider_spec, save_deepseek_key, save_provider_key,
 )
 
 
@@ -54,6 +55,30 @@ class ExamplesAndProvidersTests(unittest.TestCase):
             self.assertTrue(any(item.startswith("model_catalog_json=") for item in overrides))
             self.assertTrue(delete_deepseek_key(root))
             self.assertFalse(deepseek_configured(root))
+
+    def test_kimi_k3_uses_native_responses_without_openai_auth(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            secret = "kimi-test-secret-value"
+            encrypted = b"windows-dpapi-kimi-ciphertext"
+            with patch("runner.model_providers.win32crypt.CryptProtectData", return_value=encrypted), \
+                 patch("runner.model_providers.win32crypt.CryptUnprotectData", return_value=("", secret.encode())):
+                save_provider_key(root, "kimi", secret)
+                self.assertTrue(provider_configured(root, "kimi"))
+                self.assertEqual(secret, load_provider_key(root, "kimi"))
+                self.assertEqual(encrypted, (root / ".runtime/secrets/kimi-api-key.bin").read_bytes())
+            spec = provider_spec("kimi")
+            self.assertEqual("kimi-k3", spec.model)
+            self.assertEqual(("low", "high", "max"), spec.reasoning_efforts)
+            self.assertNotIn("none", spec.reasoning_efforts)
+            overrides = provider_overrides("kimi", root)
+            self.assertIn('model_providers.kimi.wire_api="responses"', overrides)
+            self.assertIn("model_providers.kimi.requires_openai_auth=false", overrides)
+            self.assertIn('model_providers.kimi.base_url="https://api.moonshot.ai/v1"', overrides)
+            self.assertIn("model_context_window=1048576", overrides)
+            self.assertTrue(any("kimi-models.json" in item for item in overrides))
+            self.assertTrue(delete_provider_key(root, "kimi"))
+            self.assertFalse(provider_configured(root, "kimi"))
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -20,14 +20,17 @@ from runner.codex_client import codex_status
 from runner.config import Settings, load_settings
 from runner.exchange import validate_icloud_sources
 from runner.jobs import JobWorkspace, create_job, default_job_title
-from runner.tasks import resume_job, run_existing_job
+from runner.tasks import resume_job, run_existing_job, run_template_analysis
+from runner.template_assets import copy_profile_to_job, load_profile
+from web.pptx_preview import normalized_pptx_bytes
 from runner.preferences import OPTIONAL_PATHS, PATH_LABELS, app_info, bundled_runtime_info, save_preferences
 from runner.login import LoginManager
 from runner.note_store import initialize_local_vault, open_local, publish_cloud, save_local
 from runner.examples import seed_completed_examples
 from runner.model_providers import (
-    DEEPSEEK_MODEL, DEEPSEEK_PROVIDER, DEEPSEEK_REASONING_EFFORTS, OPENAI_PROVIDER, deepseek_configured,
-    delete_deepseek_key, load_deepseek_key, save_deepseek_key, test_deepseek_key,
+    DEEPSEEK_PROVIDER, EXTERNAL_PROVIDERS, OPENAI_PROVIDER, delete_provider_key,
+    external_provider_data, load_provider_key, provider_configured, provider_spec,
+    save_provider_key, test_provider_key,
 )
 from runner.instance import instance_info
 
@@ -37,7 +40,7 @@ instance = instance_info(settings.project_root)
 _codex_cache: tuple[float, dict] | None = None
 login_manager = LoginManager()
 app = FastAPI(title="Research Starter", docs_url=None, redoc_url=None)
-ASSET_VERSION = "0.3.0.6"
+ASSET_VERSION = "0.4.1.8"
 SLIDES_TEMPLATE_LIBRARY = "Templates"
 templates = Jinja2Templates(directory=str(settings.project_root / "web" / "templates"))
 templates.env.globals["asset_version"] = ASSET_VERSION
@@ -203,6 +206,20 @@ def _template_library_items() -> list[str]:
     ]
 
 
+def _template_library_records() -> list[dict]:
+    root = _template_library_root()
+    records = []
+    for name in _template_library_items():
+        path = root / name
+        profile = load_profile(root, path)
+        records.append({
+            "name": name,
+            "loaded": profile is not None,
+            "slide_count": profile.get("slide_count") if profile else None,
+        })
+    return records
+
+
 def _resolve_template_library_item(item: str) -> Path:
     root = _template_library_root().resolve()
     source = (root / item).resolve(strict=True)
@@ -324,6 +341,21 @@ async def _execute(job: JobWorkspace, instructions: str, icloud: bool) -> None:
         pass
 
 
+async def _execute_template_analysis(job: JobWorkspace) -> None:
+    try:
+        state = job.read()
+        await run_template_analysis(
+            job,
+            _template_library_root(),
+            settings=settings,
+            model=None if state.get("model") == "runtime default" else state.get("model"),
+            effort=None if state.get("reasoning_effort") == "runtime default" else state.get("reasoning_effort"),
+            model_provider=state.get("model_provider", OPENAI_PROVIDER),
+        )
+    except Exception:
+        pass
+
+
 async def _resume(job: JobWorkspace, instructions: str) -> None:
     try:
         await resume_job(job.root, instructions, settings=settings)
@@ -377,22 +409,19 @@ async def _publish_note_cloud(job: JobWorkspace) -> None:
         )
 
 
-async def _save_ppt_template(job: JobWorkspace, upload: UploadFile) -> Path:
+async def _save_template_to_library(upload: UploadFile) -> Path:
     if not upload.filename:
         raise HTTPException(400, "PPT template filename is missing")
     parts = _safe_upload_parts(upload.filename)
     if len(parts) != 1 or Path(parts[0]).suffix.lower() != ".pptx":
         raise HTTPException(400, "PPT template must be one .pptx file")
-    library_destination = _available_inbox_path(_template_library_root() / parts[0])
-    with library_destination.open("wb") as handle:
+    destination = _available_inbox_path(_template_library_root() / parts[0])
+    with destination.open("wb") as handle:
         while chunk := await upload.read(1024 * 1024):
             handle.write(chunk)
-    if library_destination.stat().st_size == 0:
-        library_destination.unlink(missing_ok=True)
+    if destination.stat().st_size == 0:
+        destination.unlink(missing_ok=True)
         raise HTTPException(400, "PPT template is empty")
-    destination = job.root / "template" / library_destination.name
-    destination.parent.mkdir(parents=True, exist_ok=False)
-    shutil.copy2(library_destination, destination)
     return destination
 
 
@@ -414,13 +443,14 @@ async def _get_codex_status(*, refresh: bool = False) -> dict:
 
 
 async def _validate_codex_selection(model: str, effort: str, provider: str = OPENAI_PROVIDER) -> None:
-    if provider == DEEPSEEK_PROVIDER:
-        if not deepseek_configured(settings.project_root):
-            raise HTTPException(400, "请先在 Settings 中配置 DeepSeek API Key")
-        if model != DEEPSEEK_MODEL:
-            raise HTTPException(400, "DeepSeek 当前仅提供 DeepSeek Flash")
-        if effort not in DEEPSEEK_REASONING_EFFORTS:
-            raise HTTPException(400, "DeepSeek Flash 的推理等级必须为 none、low、high 或 max")
+    if provider in EXTERNAL_PROVIDERS:
+        spec = provider_spec(provider)
+        if not provider_configured(settings.project_root, provider):
+            raise HTTPException(400, f"请先在 Settings 中配置 {spec.name} API Key")
+        if model != spec.model:
+            raise HTTPException(400, f"{spec.name} 当前仅提供 {spec.model_name}")
+        if effort not in spec.reasoning_efforts:
+            raise HTTPException(400, f"{spec.model_name} 不支持所选推理等级")
         return
     if provider != OPENAI_PROVIDER:
         raise HTTPException(400, "Unsupported model provider")
@@ -451,9 +481,32 @@ async def task_page(request: Request, task: str):
             "task": task,
             "inbox_items": _local_inbox_items(task),
             "template_items": _template_library_items() if task == "research-slides" else [],
+            "template_records": _template_library_records() if task == "research-slides" else [],
             "icloud_items": _icloud_items(task),
             "icloud_enabled": settings.icloud_inbox_root is not None,
+            "external_providers": external_provider_data(settings.project_root),
         },
+    )
+
+
+@app.get("/api/templates/file/{item:path}")
+async def template_preview_file(item: str, preview: bool = False):
+    try:
+        source = _resolve_template_library_item(item)
+        if load_profile(_template_library_root(), source) is None:
+            raise ValueError("该模板尚未完成载入分析")
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        raise HTTPException(404, str(exc)) from exc
+    if preview:
+        return Response(
+            normalized_pptx_bytes(source),
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+    return FileResponse(
+        source,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        filename=source.name,
+        content_disposition_type="inline",
     )
 
 
@@ -471,7 +524,7 @@ async def settings_page(request: Request):
         },
         "labels": PATH_LABELS, "optional_paths": OPTIONAL_PATHS,
         "runtime": bundled_runtime_info(settings), "info": app_info(settings.project_root),
-        "deepseek_configured": deepseek_configured(settings.project_root),
+        "external_providers": external_provider_data(settings.project_root),
     })
 
 
@@ -492,35 +545,69 @@ async def update_settings(request: Request):
     return {"message": "已保存并生效；原配置已备份。已有文件不会自动搬迁。"}
 
 
-@app.get("/api/deepseek/status")
-async def deepseek_status(check: bool = False):
-    configured = deepseek_configured(settings.project_root)
-    result = {"configured": configured, "model": DEEPSEEK_MODEL}
+async def _provider_status(provider: str, check: bool = False):
+    try:
+        spec = provider_spec(provider)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    configured = provider_configured(settings.project_root, provider)
+    result = spec.public(configured)
     if check and configured:
         try:
-            result.update(await asyncio.to_thread(test_deepseek_key, load_deepseek_key(settings.project_root)))
+            result.update(await asyncio.to_thread(
+                test_provider_key, provider, load_provider_key(settings.project_root, provider),
+            ))
         except ValueError as exc:
             raise HTTPException(503, str(exc)) from exc
     return result
 
 
-@app.post("/api/deepseek/key")
-async def set_deepseek_key(request: Request):
+@app.get("/api/providers/{provider}/status")
+async def external_provider_status(provider: str, check: bool = False):
+    return await _provider_status(provider, check)
+
+
+@app.post("/api/providers/{provider}/key")
+async def set_provider_key(provider: str, request: Request):
     _require_idle()
+    try:
+        spec = provider_spec(provider)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
     payload = await request.json()
     key = payload.get("api_key", "") if isinstance(payload, dict) else ""
     try:
-        save_deepseek_key(settings.project_root, key)
+        save_provider_key(settings.project_root, provider, key)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    return {"message": "DeepSeek API Key 已安全保存在本机；可点击“测试连接”单独验证。"}
+    return {"message": f"{spec.name} API Key 已安全保存在本机；可点击“测试连接”单独验证。"}
+
+
+@app.delete("/api/providers/{provider}/key")
+async def remove_provider_key(provider: str):
+    _require_idle()
+    try:
+        spec = provider_spec(provider)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    delete_provider_key(settings.project_root, provider)
+    return {"message": f"已移除本机保存的 {spec.name} API Key。"}
+
+
+# Compatibility aliases for the 1.2 DeepSeek settings UI.
+@app.get("/api/deepseek/status")
+async def deepseek_status(check: bool = False):
+    return await _provider_status(DEEPSEEK_PROVIDER, check)
+
+
+@app.post("/api/deepseek/key")
+async def set_deepseek_key(request: Request):
+    return await set_provider_key(DEEPSEEK_PROVIDER, request)
 
 
 @app.delete("/api/deepseek/key")
 async def remove_deepseek_key():
-    _require_idle()
-    delete_deepseek_key(settings.project_root)
-    return {"message": "已移除本机保存的 DeepSeek API Key。"}
+    return await remove_provider_key(DEEPSEEK_PROVIDER)
 
 
 @app.get("/about", response_class=HTMLResponse)
@@ -611,17 +698,25 @@ async def submit_job(
             shutil.rmtree(job.root)
             raise HTTPException(400, "PPT template is only available for Research Slides")
         try:
+            source_template = _resolve_template_library_item(template_item)
+            if load_profile(_template_library_root(), source_template) is None:
+                raise ValueError("该模板尚未完成载入分析；请先点击“载入所选模板”")
             template_path = _copy_library_template_to_job(job, template_item)
+            profile_path = copy_profile_to_job(
+                _template_library_root(), source_template, job.root / "template-profile"
+            )
         except (FileNotFoundError, OSError, ValueError) as exc:
             shutil.rmtree(job.root)
             raise HTTPException(400, f"Invalid template library item: {exc}") from exc
-        job.update(template_path=str(template_path), template_library_item=template_item)
+        job.update(
+            template_path=str(template_path), template_library_item=template_item,
+            template_profile_path=str(profile_path),
+            template_profile_json=str(profile_path / "profile.json"),
+            template_profile_markdown=str(profile_path / "profile.md"),
+        )
     elif ppt_template and ppt_template.filename:
-        if task != "research-slides":
-            shutil.rmtree(job.root)
-            raise HTTPException(400, "PPT template is only available for Research Slides")
-        template_path = await _save_ppt_template(job, ppt_template)
-        job.update(template_path=str(template_path), template_library_item=template_path.name)
+        shutil.rmtree(job.root)
+        raise HTTPException(400, "新模板必须先通过“载入所选模板”完成一次性分析，不能直接用于生成")
     job.update(
         model=model or "runtime default",
         reasoning_effort=effort or "runtime default",
@@ -637,6 +732,40 @@ async def submit_job(
         )
     background.add_task(_execute, job, instructions, use_icloud)
     return JSONResponse({"job_id": job.root.name}, status_code=202)
+
+
+@app.post("/api/templates/analyze")
+async def analyze_template(
+    background: BackgroundTasks,
+    template_item: str = Form(""),
+    model: str = Form(""),
+    effort: str = Form(""),
+    provider: str = Form(OPENAI_PROVIDER),
+    ppt_template: UploadFile | None = File(default=None),
+):
+    if login_manager.active and provider == OPENAI_PROVIDER:
+        raise HTTPException(409, "请先完成或取消 Codex 登录")
+    await _validate_codex_selection(model, effort, provider)
+    if template_item and ppt_template and ppt_template.filename:
+        raise HTTPException(400, "上传模板与模板库选择只能使用一种")
+    if ppt_template and ppt_template.filename:
+        source = await _save_template_to_library(ppt_template)
+    elif template_item:
+        try:
+            source = _resolve_template_library_item(template_item)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            raise HTTPException(400, f"Invalid template library item: {exc}") from exc
+    else:
+        raise HTTPException(400, "请选择或上传一个 PPTX 模板")
+    job = create_job(settings.local_jobs, "template-analysis", [source])
+    job.update(
+        title=f"模板载入：{source.stem}", analysis_template_path=str(source),
+        template_library_item=source.name,
+        model=model or "runtime default", reasoning_effort=effort or "runtime default",
+        model_provider=provider, language="zh",
+    )
+    background.add_task(_execute_template_analysis, job)
+    return JSONResponse({"job_id": job.root.name, "template_item": source.name}, status_code=202)
 
 
 @app.get("/api/codex/status")
@@ -680,13 +809,14 @@ async def delete_job(job_id: str):
 @app.post("/api/jobs/{job_id}/follow-up")
 async def follow_up(background: BackgroundTasks, job_id: str, question: str = Form(...), model: str = Form(""), effort: str = Form("")):
     job = _job(job_id)
-    if job.read()["task"] != "paper-guide":
+    state = job.read()
+    if state["task"] != "paper-guide":
         raise HTTPException(400, "Follow-up is only enabled for Paper Guide")
-    if job.read().get("status") not in {"completed", "failed"} or not job.read().get("thread_id") or login_manager.active:
+    provider = state.get("model_provider", OPENAI_PROVIDER)
+    if state.get("status") not in {"completed", "failed"} or not state.get("thread_id") or (login_manager.active and provider == OPENAI_PROVIDER):
         raise HTTPException(409, "当前会话尚不能追问，请等待任务或登录完成")
     if not question.strip():
         raise HTTPException(400, "请输入问题")
-    provider = job.read().get("model_provider", OPENAI_PROVIDER)
     if provider == OPENAI_PROVIDER:
         await _validate_codex_selection(model, effort)
     else:
@@ -780,7 +910,7 @@ async def publish_note(background: BackgroundTasks, job_id: str):
 
 
 @app.get("/jobs/{job_id}/output/{index}")
-async def download_output(job_id: str, index: int):
+async def download_output(job_id: str, index: int, preview: bool = False):
     job = _job(job_id)
     state = job.read()
     outputs = state.get("outputs", [])
@@ -799,6 +929,11 @@ async def download_output(job_id: str, index: int):
             title = re.sub(r'[<>:"/\\|?*]+', "-", presented.get("display_title", "Research-Slides")).strip(" .")
             kind = "初始版" if version["version"] == 1 else f"修订版-{version['version'] - 1}"
             filename = f"{title}-V{version['version']}-{kind}.pptx"
+    if preview and path.suffix.lower() == ".pptx":
+        return Response(
+            normalized_pptx_bytes(path),
+            media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
     return FileResponse(path, filename=filename)
 
 

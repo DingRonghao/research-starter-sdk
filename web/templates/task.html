@@ -3,26 +3,45 @@
 {% block content %}
 <a class="back" href="/">← 返回</a>
 <h1>{{ task }}</h1>
-<form id="job-form" enctype="multipart/form-data">
+<form id="job-form" class="{{ 'slides-task-form' if task == 'research-slides' else 'standard-task-form' }}" enctype="multipart/form-data">
   <input type="hidden" name="task" value="{{ task }}">
+  {% if task != 'research-slides' %}<div class="standard-setup-grid"><div class="standard-input-column">{% endif %}
   {% if task == 'paper-guide' %}
-    <label>阅读备注（可选）<textarea name="instructions"></textarea></label>
+    <section class="control-panel instruction-panel"><label>阅读备注（可选）<textarea name="instructions"></textarea></label></section>
   {% elif task == 'research-note' %}
-    <label>补充说明（可选）<textarea name="instructions" placeholder="例如：希望笔记回答的问题、整理重点或结构偏好"></textarea></label>
+    <section class="control-panel instruction-panel"><label>补充说明（可选）<textarea name="instructions" placeholder="例如：希望笔记回答的问题、整理重点或结构偏好"></textarea></label></section>
   {% else %}
+    <div class="slides-setup-grid">
+    <div class="slides-template-column">
     <section class="inbox-source-panel template-source-panel">
       <div class="drop-zone" id="template-drop-zone" tabindex="0" role="button" aria-label="拖入或选择 PPTX 模板">
-        <strong>拖入 PPTX 模板（可选）</strong>
-        <span>或点击这里选择。模板会复制到固定模板库，供以后任务重复调用。</span>
+        <strong>拖入新的 PPTX 模板（可选）</strong>
+        <span>新模板需要先完成一次高质量载入分析，之后可反复调用。</span>
         <span class="drop-status" id="template-status">尚未选择模板</span>
       </div>
       <input class="visually-hidden" id="template-input" type="file" name="ppt_template" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation">
       <label>或选择模板库中的已有模板
-        <select name="template_item" id="template-item"><option value="">不使用模板</option>{% for item in template_items %}<option value="{{ item }}">{{ item }}</option>{% endfor %}</select>
+        <select name="template_item" id="template-item"><option value="">不使用模板</option>{% if template_records is defined %}{% for item in template_records %}<option value="{{ item.name }}" data-loaded="{{ 'true' if item.loaded else 'false' }}">{{ item.name }} · {{ ('已载入' + ((' · ' + item.slide_count|string + ' 页') if item.slide_count else '')) if item.loaded else '需要载入' }}</option>{% endfor %}{% else %}{% for item in template_items %}<option value="{{ item }}" data-loaded="false">{{ item }} · 需要载入</option>{% endfor %}{% endif %}</select>
         <span class="muted">固定位置：Inbox/Templates/。这里选择的是单个 PPTX 文件，不是文件夹。</span>
       </label>
+      <div class="template-load-actions">
+        <button type="button" id="analyze-template">载入所选模板</button>
+        <p class="muted">模板载入会逐页完成视觉与结构分析。建议在下方选择能力较高的模型和较高推理等级；此过程每个模板通常只需执行一次。</p>
+      </div>
     </section>
-    <label>内容 / 页面逻辑（可选）<textarea name="instructions" placeholder="可留空；系统会优先读取素材文件夹内的 Markdown、TXT 等说明文件。"></textarea></label>
+    <section class="control-panel template-model-controls">
+      <div><h2>模板载入模型</h2><p class="muted">仅用于一次性的模板视觉与结构分析。建议选择能力较高的模型和较高推理等级。</p><p class="model-usage" id="template-usage" aria-live="polite">正在读取账户用量…</p></div>
+      <label>提供方<select id="template-provider"><option value="openai">OpenAI Codex</option>{% for provider in external_providers %}<option value="{{ provider.provider }}">{{ provider.name }} API</option>{% endfor %}</select></label>
+      <label>模型<select id="template-model"><option value="">正在加载…</option></select></label>
+      <label>推理等级<select id="template-effort"><option value="">正在加载…</option></select></label>
+    </section>
+    <section class="control-panel template-preview-panel">
+      <div><h2>已载入模板预览</h2><p class="muted" id="template-preview-status">请选择一个已完成载入的模板。</p></div>
+      <div id="template-pptx-viewer" class="template-pptx-viewer" hidden></div>
+    </section>
+    </div>
+    <div class="slides-generation-column">
+    <section class="control-panel instruction-panel"><label>内容 / 页面逻辑（可选）<textarea name="instructions" placeholder="可留空；系统会优先读取素材文件夹内的 Markdown、TXT 等说明文件。"></textarea></label></section>
   {% endif %}
   <section class="inbox-source-panel">
     <div class="drop-zone" id="source-drop-zone" tabindex="0" role="button" aria-label="{{ '拖入或选择 PDF' if task == 'paper-guide' else '拖入或选择素材文件夹' }}">
@@ -37,6 +56,7 @@
     </label>
     {% if icloud_enabled %}<label>或从外部素材库选择（可选）<select name="icloud_item" id="icloud-item"><option value="">不选择</option>{% for item in icloud_items %}<option>{{ item }}</option>{% endfor %}</select></label>{% else %}<p class="muted">外部素材入口未启用；仍可拖放、上传或选择项目 Inbox 中的内容。</p>{% endif %}
   </section>
+  {% if task != 'research-slides' %}</div><div class="standard-controls-column">{% endif %}
   <section class="control-panel">
     <div>
       <h2>输出语言</h2>
@@ -50,14 +70,16 @@
   </section>
   <section class="control-panel codex-controls">
     <div>
-      <h2>模型提供方</h2>
-      <p class="muted" id="codex-summary">正在读取可用模型与账户状态…</p>
+      <h2>{{ 'PPT 生成模型' if task == 'research-slides' else '模型提供方' }}</h2>
+      <p class="muted" id="codex-summary">{{ '仅用于根据素材和已载入模板生成、修订 PPT。' if task == 'research-slides' else '正在读取可用模型与账户状态…' }}</p>
     </div>
-    <label>提供方<select name="provider" id="provider"><option value="openai">OpenAI Codex</option><option value="deepseek">DeepSeek API</option></select></label>
+    <label>提供方<select name="provider" id="provider"><option value="openai">OpenAI Codex</option>{% for provider in external_providers %}<option value="{{ provider.provider }}">{{ provider.name }} API</option>{% endfor %}</select></label>
     <label>模型<select name="model" id="model"><option value="">正在加载…</option></select></label>
     <label>推理等级<select name="effort" id="effort"><option value="">正在加载…</option></select></label>
   </section>
-  <button type="submit">{% if task == 'research-note' %}预览{% elif task == 'research-slides' %}生成 PPT{% else %}开始阅读{% endif %}</button>
+  {% if task != 'research-slides' %}</div></div>{% endif %}
+  {% if task == 'research-slides' %}</div></div>{% endif %}
+  <button class="primary-task-submit" type="submit">{% if task == 'research-note' %}预览{% elif task == 'research-slides' %}生成 PPT{% else %}开始阅读{% endif %}</button>
 </form>
 <p id="message"></p>
 {% endblock %}
@@ -67,8 +89,19 @@ const modelSelect = document.querySelector('#model');
 const effortSelect = document.querySelector('#effort');
 const providerSelect = document.querySelector('#provider');
 const codexSummary = document.querySelector('#codex-summary');
+const externalProviders = Object.fromEntries({{ external_providers|tojson }}.map(item => [item.provider, item]));
+const templateProviderSelect = document.querySelector('#template-provider');
+const templateModelSelect = document.querySelector('#template-model');
+const templateEffortSelect = document.querySelector('#template-effort');
+const templateUsage = document.querySelector('#template-usage');
 let codexModels = [];
 let providerRequest = 0;
+let templatePreviewViewer = null;
+let templatePreviewItem = '';
+
+function effortLabel(value) {
+  return ({none:'None',low:'Low',medium:'Medium',high:'High',xhigh:'XHigh',max:'Max',ultra:'Ultra'})[value] || value;
+}
 
 function durationLabel(minutes) {
   if (!Number.isFinite(minutes)) return '用量窗口';
@@ -95,8 +128,8 @@ function usageSummary(usage) {
 }
 
 function updateEfforts() {
-  if (providerSelect.value === 'deepseek') {
-    setDeepSeekEfforts();
+  if (externalProviders[providerSelect.value]) {
+    setExternalEfforts(externalProviders[providerSelect.value]);
     return;
   }
   const model = codexModels.find(item => item.model === modelSelect.value);
@@ -104,22 +137,16 @@ function updateEfforts() {
   for (const option of model?.supportedReasoningEfforts || []) {
     const element = document.createElement('option');
     element.value = option.reasoningEffort;
-    element.textContent = option.reasoningEffort;
+    element.textContent = effortLabel(option.reasoningEffort);
     element.selected = option.reasoningEffort === (localStorage.getItem('research-starter-effort') || model.defaultReasoningEffort);
     effortSelect.appendChild(element);
   }
   localStorage.setItem('research-starter-model', modelSelect.value);
 }
 
-function setDeepSeekEfforts() {
-  const remembered = localStorage.getItem('research-starter-deepseek-effort') || 'high';
-  const options = [
-    ['none', '关闭思考（最快）'],
-    ['low', '低（快速）'],
-    ['high', '高（官方默认）'],
-    ['max', '最大（最深入）'],
-  ];
-  effortSelect.replaceChildren(...options.map(([value, label]) => new Option(label, value, false, value === remembered)));
+function setExternalEfforts(spec) {
+  const remembered = localStorage.getItem(`research-starter-${spec.provider}-effort`) || spec.default_effort;
+  effortSelect.replaceChildren(...spec.reasoning_efforts.map(value => new Option(effortLabel(value), value, false, value === remembered)));
 }
 
 async function loadCodexStatus(requestId = providerRequest) {
@@ -151,14 +178,15 @@ async function loadCodexStatus(requestId = providerRequest) {
 async function updateProvider() {
   const requestId = ++providerRequest;
   localStorage.setItem('research-starter-provider', providerSelect.value);
-  if (providerSelect.value === 'deepseek') {
-    const status = await fetch('/api/deepseek/status').then(response => response.json());
-    if (requestId !== providerRequest || providerSelect.value !== 'deepseek') return;
-    modelSelect.innerHTML = '<option value="deepseek-flash">DeepSeek Flash（当前 V4.1 Flash）</option>';
-    setDeepSeekEfforts();
+  const spec = externalProviders[providerSelect.value];
+  if (spec) {
+    const status = await fetch(`/api/providers/${spec.provider}/status`).then(response => response.json());
+    if (requestId !== providerRequest || providerSelect.value !== spec.provider) return;
+    modelSelect.replaceChildren(new Option(spec.model_name, spec.model));
+    setExternalEfforts(spec);
     codexSummary.textContent = status.configured
-      ? 'DeepSeek API 已配置；模型 ID 为 deepseek-flash，当前对应 V4.1 Flash。推理等级默认“高”。'
-      : '尚未配置 DeepSeek API Key，请先前往 Settings。';
+      ? `${spec.name} API 已配置；模型 ID 为 ${spec.model}；默认推理等级为 ${effortLabel(spec.default_effort)}。${spec.usage_note}`
+      : `尚未配置 ${spec.name} API Key，请先前往 Settings。`;
   } else {
     await loadCodexStatus(requestId);
   }
@@ -167,7 +195,7 @@ async function updateProvider() {
 modelSelect.addEventListener('change', updateEfforts);
 providerSelect.addEventListener('change', updateProvider);
 effortSelect.addEventListener('change', () => localStorage.setItem(
-  providerSelect.value === 'deepseek' ? 'research-starter-deepseek-effort' : 'research-starter-effort',
+  externalProviders[providerSelect.value] ? `research-starter-${providerSelect.value}-effort` : 'research-starter-effort',
   effortSelect.value,
 ));
 document.querySelectorAll('[name="language"]').forEach(input => {
@@ -176,6 +204,56 @@ document.querySelectorAll('[name="language"]').forEach(input => {
 });
 providerSelect.value = localStorage.getItem('research-starter-provider') || 'openai';
 updateProvider();
+
+function fillTemplateEfforts(values, defaultValue) {
+  const remembered = localStorage.getItem('research-starter-template-effort') || defaultValue || '';
+  templateEffortSelect.replaceChildren(...values.map(value => new Option(effortLabel(value), value, false, value === remembered)));
+}
+
+async function updateTemplateProvider() {
+  if (!templateProviderSelect) return;
+  const provider = templateProviderSelect.value;
+  localStorage.setItem('research-starter-template-provider', provider);
+  const spec = externalProviders[provider];
+  if (spec) {
+    templateModelSelect.replaceChildren(new Option(spec.model_name, spec.model));
+    fillTemplateEfforts(spec.reasoning_efforts, spec.default_effort);
+    templateUsage.textContent = spec.configured
+      ? `${spec.name} API · ${spec.usage_note}`
+      : `尚未配置 ${spec.name} API Key；${spec.usage_note}`;
+    return;
+  }
+  try {
+    const response = await fetch('/api/codex/status');
+    if (!response.ok) throw new Error('status unavailable');
+    const status = await response.json();
+    const models = status.models.data.filter(item => !item.hidden);
+    const remembered = localStorage.getItem('research-starter-template-model');
+    templateModelSelect.replaceChildren(...models.map(item => new Option(
+      `${item.displayName}${item.isDefault?'（默认）':''}`, item.model, false,
+      remembered ? item.model === remembered : item.isDefault,
+    )));
+    if (!templateModelSelect.value && models.length) templateModelSelect.value = models[0].model;
+    const selected = models.find(item => item.model === templateModelSelect.value);
+    fillTemplateEfforts((selected?.supportedReasoningEfforts || []).map(item => item.reasoningEffort), selected?.defaultReasoningEffort);
+    templateUsage.textContent = usageSummary(status.usage);
+  } catch (_) {
+    templateModelSelect.replaceChildren(new Option('运行时默认',''));
+    templateEffortSelect.replaceChildren(new Option('运行时默认',''));
+    templateUsage.textContent = '暂时无法读取账户用量；可在 Settings 检查登录。';
+  }
+}
+
+templateProviderSelect?.addEventListener('change', updateTemplateProvider);
+templateModelSelect?.addEventListener('change', async () => {
+  localStorage.setItem('research-starter-template-model', templateModelSelect.value);
+  if (templateProviderSelect.value === 'openai') await updateTemplateProvider();
+});
+templateEffortSelect?.addEventListener('change', () => localStorage.setItem('research-starter-template-effort', templateEffortSelect.value));
+if (templateProviderSelect) {
+  templateProviderSelect.value = localStorage.getItem('research-starter-template-provider') || 'openai';
+  updateTemplateProvider();
+}
 
 const sourceInput = document.querySelector('#source-input');
 const dropZone = document.querySelector('#source-drop-zone');
@@ -187,6 +265,45 @@ const templateDropZone = document.querySelector('#template-drop-zone');
 const templateStatus = document.querySelector('#template-status');
 const templateItem = document.querySelector('#template-item');
 let droppedFiles = [];
+
+async function renderSelectedTemplatePreview() {
+  const container = document.querySelector('#template-pptx-viewer');
+  const status = document.querySelector('#template-preview-status');
+  if (!container || !status || !templateItem) return;
+  const option = templateItem.selectedOptions[0];
+  const item = templateItem.value;
+  const loaded = option?.dataset.loaded === 'true';
+  if (!item || !loaded) {
+    templatePreviewViewer?.destroy?.();
+    templatePreviewViewer = null;
+    templatePreviewItem = '';
+    container.replaceChildren();
+    container.hidden = true;
+    status.textContent = item ? '请先载入所选模板。' : '请选择一个已完成载入的模板。';
+    return;
+  }
+  if (templatePreviewItem === item && templatePreviewViewer) return;
+  try {
+    templatePreviewViewer?.destroy?.();
+    templatePreviewViewer = null;
+    templatePreviewItem = item;
+    container.hidden = false;
+    container.replaceChildren();
+    status.textContent = `正在载入 ${item}…`;
+    const response = await fetch(`/api/templates/file/${encodeURIComponent(item)}?preview=true`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const buffer = await response.arrayBuffer();
+    const {openPptxPreview} = await import('/static/pptx-preview.js?v={{ asset_version }}');
+    templatePreviewViewer = await openPptxPreview(container, buffer);
+    if (!container.children.length) throw new Error('渲染器未生成可见页面');
+    status.textContent = `${item} · 可滚动预览`;
+  } catch (error) {
+    templatePreviewItem = '';
+    container.hidden = false;
+    container.innerHTML = `<p class="reader-error">模板无法预览：${String(error.message || error)}</p>`;
+    status.textContent = '模板预览载入失败';
+  }
+}
 
 function showSource(files) {
   const first = files[0];
@@ -237,6 +354,7 @@ function setTemplateFile(file) {
   if (!file.name.toLowerCase().endsWith('.pptx')) { templateInput.value = ''; templateStatus.textContent = '模板必须是一个 PPTX 文件'; return; }
   const transfer = new DataTransfer(); transfer.items.add(file); templateInput.files = transfer.files;
   templateStatus.textContent = file.name; templateItem.value = '';
+  renderSelectedTemplatePreview();
 }
 templateDropZone?.addEventListener('click', () => templateInput.click());
 templateDropZone?.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); templateInput.click(); } });
@@ -244,7 +362,22 @@ for (const eventName of ['dragenter', 'dragover']) templateDropZone?.addEventLis
 for (const eventName of ['dragleave', 'drop']) templateDropZone?.addEventListener(eventName, event => { event.preventDefault(); templateDropZone.classList.remove('is-dragging'); });
 templateDropZone?.addEventListener('drop', event => { const files = [...event.dataTransfer.files]; setTemplateFile(files.length === 1 ? files[0] : null); if (files.length !== 1) templateStatus.textContent = '一次只能拖入一个 PPTX 模板'; });
 templateInput?.addEventListener('change', () => setTemplateFile(templateInput.files[0]));
-templateItem?.addEventListener('change', () => { if (templateItem.value) { templateInput.value = ''; templateStatus.textContent = `模板库：${templateItem.value}`; } else { templateStatus.textContent = '尚未选择模板'; } });
+templateItem?.addEventListener('change', () => { if (templateItem.value) { templateInput.value = ''; const loaded=templateItem.selectedOptions[0]?.dataset.loaded==='true'; templateStatus.textContent = `模板库：${templateItem.value} · ${loaded?'已载入':'需要先载入'}`; } else { templateStatus.textContent = '尚未选择模板'; } renderSelectedTemplatePreview(); });
+document.querySelector('#analyze-template')?.addEventListener('click', async () => {
+  const message = document.querySelector('#message');
+  if (!templateInput.files[0] && !templateItem.value) { message.textContent = '请选择或拖入一个 PPTX 模板'; return; }
+  message.textContent = '正在建立模板载入任务…';
+  const body = new FormData();
+  if (templateInput.files[0]) body.append('ppt_template', templateInput.files[0], templateInput.files[0].name);
+  else body.append('template_item', templateItem.value);
+  body.append('provider', templateProviderSelect.value);
+  body.append('model', templateModelSelect.value);
+  body.append('effort', templateEffortSelect.value);
+  const response = await fetch('/api/templates/analyze', {method:'POST', body});
+  const data = await response.json();
+  if (!response.ok) { message.textContent = data.detail || '模板载入任务创建失败'; return; }
+  location.href = `/jobs/${data.job_id}`;
+});
 
 document.querySelector('#job-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -252,6 +385,14 @@ document.querySelector('#job-form').addEventListener('submit', async (event) => 
   const form = event.target;
   const cloudSelect = form.querySelector('[name="icloud_item"]');
   const selectedFiles = droppedFiles.length ? droppedFiles : [...sourceInput.files].map(file => ({file, path: file.webkitRelativePath || file.name}));
+  if ('{{ task }}' === 'research-slides' && templateInput?.files[0]) {
+    message.textContent = '这个新模板尚未载入。请先点击“载入所选模板”，完成后再生成 PPT。';
+    return;
+  }
+  if ('{{ task }}' === 'research-slides' && templateItem?.value && templateItem.selectedOptions[0]?.dataset.loaded !== 'true') {
+    message.textContent = '所选模板尚未完成载入分析，请先点击“载入所选模板”。';
+    return;
+  }
   if (!selectedFiles.length && !inboxItem.value && !cloudSelect?.value) {
     message.textContent = '{{ "请选择一个素材文件夹" if task in ["research-note", "research-slides"] else "请选择一个 PDF" }}';
     return;

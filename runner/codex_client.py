@@ -8,7 +8,7 @@ from typing import Any
 from openai_codex import ApprovalMode, AsyncCodex, CodexConfig, Sandbox, SkillInput, TextInput
 from openai_codex.generated.v2_all import GetAccountRateLimitsResponse, ReasoningEffort
 
-from .model_providers import DEEPSEEK_PROVIDER, load_deepseek_key, provider_overrides
+from .model_providers import OPENAI_PROVIDER, load_provider_key, provider_overrides, provider_spec
 
 
 def _json(value: Any) -> dict[str, Any]:
@@ -38,8 +38,9 @@ async def codex_status(codex_home: Path, project_root: Path) -> dict[str, Any]:
 class CodexRunner:
     def __init__(self, codex_home: Path, project_root: Path, model_provider: str = "openai") -> None:
         env = {"HOME": str(codex_home.parent), "CODEX_HOME": str(codex_home)}
-        if model_provider == DEEPSEEK_PROVIDER:
-            env["DEEPSEEK_API_KEY"] = load_deepseek_key(project_root)
+        if model_provider != OPENAI_PROVIDER:
+            spec = provider_spec(model_provider)
+            env[spec.env_key] = load_provider_key(project_root, model_provider)
         self.model_provider = model_provider
         self._client = AsyncCodex(CodexConfig(
             cwd=str(project_root), env=env, config_overrides=provider_overrides(model_provider, project_root),

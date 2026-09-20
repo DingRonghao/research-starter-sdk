@@ -7,6 +7,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.log
+*.lnk
 /tmp/
 /dist/
 
@@ -24,7 +25,10 @@ __pycache__/
 !/Inbox/research-slides/public-sample/**
 !/Inbox/Templates/
 !/Inbox/Templates/README.md
-!/Inbox/Templates/高校通用学术论文汇报模板_31页_版式细化版.pptx
+!/Inbox/Templates/Academic-Research-Presentation.pptx
+!/Inbox/Templates/.research-starter-analysis/
+!/Inbox/Templates/.research-starter-analysis/Academic-Research-Presentation.pptx/
+!/Inbox/Templates/.research-starter-analysis/Academic-Research-Presentation.pptx/**
 /Output/**
 !/Output/paper-guide/
 !/Output/paper-guide/public-sample/

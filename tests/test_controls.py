@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import replace
+from io import BytesIO
 import json
 from pathlib import Path
 import re
@@ -17,6 +18,7 @@ from runner.preferences import save_preferences
 from runner.tasks import resume_job
 from runner.note_store import open_local, publish_cloud, save_local
 from runner.instance import instance_info, preferred_ports, select_port
+from web.pptx_preview import normalized_pptx_bytes
 
 
 class ControlsTests(unittest.TestCase):
@@ -116,19 +118,44 @@ class ControlsTests(unittest.TestCase):
         self.assertIn('signtool.exe', build)
         self.assertIn('/XD .git .runtime .venv runtime node_modules Inbox Output', build)
         self.assertIn("$sampleSource = Join-Path $project \"$area\\$task\\public-sample\"", build)
+        self.assertIn("$publicTemplateName = 'Academic-Research-Presentation.pptx'", build)
+        self.assertIn(".research-starter-analysis\\$publicTemplateName", build)
+        self.assertIn("@('profile.json', 'profile.md')", build)
         launcher_source = (project / 'tools/ResearchStarterLauncher.cs').read_text(encoding='utf-8')
         self.assertIn('AppDomain.CurrentDomain.BaseDirectory', launcher_source)
         self.assertIn('CreateNoWindow = true', launcher_source)
 
     def test_pptx_preview_renders_complete_slides_inside_its_scroll_container(self):
-        script = (Path(__file__).parents[1] / 'web/static/job.js').read_text(encoding='utf-8')
-        self.assertEqual('0.3.0.6', web.ASSET_VERSION)
-        self.assertIn('scrollContainer:container', script)
-        self.assertIn('listOptions:{windowed:false', script)
-        self.assertIn('lazySlides:false', script)
-        self.assertIn('lazyMedia:false', script)
-        self.assertIn('correctPptxThemeBackgrounds(pptxViewer,container)', script)
-        self.assertIn("master.colorMap.get(scheme)", script)
+        root = Path(__file__).parents[1]
+        script = (root / 'web/static/job.js').read_text(encoding='utf-8')
+        preview = (root / 'web/static/pptx-preview.js').read_text(encoding='utf-8')
+        self.assertEqual('0.4.1.8', web.ASSET_VERSION)
+        self.assertIn('openPptxPreview(container,buffer)', script)
+        self.assertIn('scrollContainer: container', preview)
+        self.assertIn('listOptions: {windowed: false', preview)
+        self.assertIn('lazySlides: false', preview)
+        self.assertIn('lazyMedia: false', preview)
+        self.assertIn('correctPptxThemeBackgrounds(viewer, container)', preview)
+        self.assertIn("viewer.addEventListener('rendercomplete'", preview)
+        server_preview = (root / 'web/pptx_preview.py').read_text(encoding='utf-8')
+        self.assertIn('?preview=true', script)
+        self.assertIn('ppt/slides/charts', server_preview)
+        self.assertIn('ppt/media/', server_preview)
+        self.assertIn('.svg', server_preview)
+        self.assertNotIn('content.style.zoom', (root / 'web/templates/task.html').read_text(encoding='utf-8'))
+        self.assertIn("master.colorMap.get(scheme)", preview)
+
+    def test_pptx_preview_copy_strips_xml_bom_without_changing_source(self):
+        source = self.root / "bom.pptx"
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("[Content_Types].xml", b"\xef\xbb\xbf<Types/>")
+            archive.writestr("ppt/slides/slide1.xml", b"\xef\xbb\xbf<p:sld/>")
+        original = source.read_bytes()
+        normalized = normalized_pptx_bytes(source)
+        with zipfile.ZipFile(BytesIO(normalized)) as archive:
+            self.assertEqual(b"<Types/>", archive.read("[Content_Types].xml"))
+            self.assertEqual(b"<p:sld/>", archive.read("ppt/slides/slide1.xml"))
+        self.assertEqual(original, source.read_bytes())
 
     def test_development_and_release_instances_use_separate_port_ranges(self):
         (self.root / '.git').mkdir()

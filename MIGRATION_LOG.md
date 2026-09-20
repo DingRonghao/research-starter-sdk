@@ -222,3 +222,13 @@ Phase 3 验收门通过。Windows 本地 Research Starter v0.2 的 SDK、iCloud 
 - Settings 保存会立即替换 Web 进程使用的 Settings；新增测试确认修改 `local_jobs` 后随即生效。项目内部的 `local_jobs`、备用输出和本地 Vault 保存回 JSON 时保持项目相对路径，外部工具与云端位置保留主机配置路径。
 - 根目录重复的旧 `app.py` 已收敛为 `web.app` 的兼容导入，避免另一入口继续运行过时代码。
 - 新增基础 Python 配置读取、可选路径留空/重新加载、Settings 即时生效、无云端本地笔记等测试。31 项自动测试、pip check、全部 Python 编译检查及前端 JavaScript 语法检查通过。
+
+## 2026-09-15 — 通用模型提供方与 Kimi K3
+
+- 将 DeepSeek 专用的模型、密钥、连接验证和 Codex override 逻辑收敛为统一 provider 注册表；保留原 DeepSeek 加密文件路径和旧 API 别名，现有配置无需迁移。
+- 新增 Kimi K3：直接使用 `https://api.moonshot.ai/v1` 的原生 Responses API，独立读取 `KIMI_API_KEY`，不依赖 OpenAI/Codex 登录。
+- Kimi 模型目录按官方能力声明 1M 上下文、文本/图片输入和工具调用，并显式传入 `model_context_window=1048576`。
+- Kimi K3 始终启用思考；UI 仅提供 low、high、max，软件默认 high，不提供不受支持的 none。
+- DeepSeek 与 Kimi API Key 分别使用 Windows 当前用户 DPAPI 加密为 `.runtime/secrets/<provider>-api-key.bin`；UI、Git、配置文件和日志均不回显密钥。
+- Settings、三个任务入口及 Paper Guide 后续对话改为读取 provider 元数据，不再为每个第三方模型复制一套前端判断。
+- 46 项自动测试、8 项 Markdown 数学解析测试、pip check、Python 编译与 JavaScript 语法检查通过；开发版实际页面确认 Settings 和任务入口均显示 Kimi API。

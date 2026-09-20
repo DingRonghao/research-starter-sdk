@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 import web.app as web_app
 import runner.tasks as runner_tasks
 from runner.note_store import save_local
+from runner.template_assets import install_profile
 
 
 class FolderUploadTests(unittest.TestCase):
@@ -20,6 +21,7 @@ class FolderUploadTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.original_settings = web_app.settings
         self.original_execute = web_app._execute
+        self.original_execute_template_analysis = web_app._execute_template_analysis
         web_app.settings = replace(
             self.original_settings,
             project_root=self.root,
@@ -40,14 +42,31 @@ class FolderUploadTests(unittest.TestCase):
             return None
 
         web_app._execute = no_execute
+        web_app._execute_template_analysis = no_execute
 
     def tearDown(self) -> None:
         web_app._execute = self.original_execute
+        web_app._execute_template_analysis = self.original_execute_template_analysis
         web_app.settings = self.original_settings
         self.temporary.cleanup()
 
     def upload(self, name: str, content: bytes = b"test") -> UploadFile:
         return UploadFile(filename=name, file=io.BytesIO(content))
+
+    def install_template_profile(self, template: Path, slide_count: int = 1) -> None:
+        generated = self.root / "generated-profile"
+        generated.mkdir(exist_ok=True)
+        (generated / "profile.json").write_text(json.dumps({
+            "schema_version": 1,
+            "template_name": template.name,
+            "slide_count": slide_count,
+            "slides": [{
+                "slide_number": 1, "visual_role": "封面", "suitable_for": ["标题"],
+                "capacity": {"summary": "短标题"}, "objects": [],
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+        (generated / "profile.md").write_text("# Template profile\n", encoding="utf-8")
+        install_profile(template.parent, template, generated)
 
     def test_research_note_preserves_one_folder_tree(self) -> None:
         sources = asyncio.run(
@@ -282,7 +301,7 @@ class FolderUploadTests(unittest.TestCase):
         self.assertEqual("# Polarization\n\nEnglish only.", state["note_preview"])
         self.assertEqual("create", state["note_mode"])
 
-    def test_slides_accepts_project_private_pptx_template(self) -> None:
+    def test_slides_rejects_new_template_until_it_is_loaded(self) -> None:
         with TestClient(web_app.app) as client:
             response = client.post(
                 "/api/jobs",
@@ -292,33 +311,93 @@ class FolderUploadTests(unittest.TestCase):
                     ("ppt_template", ("academic.pptx", b"pptx-template", "application/vnd.openxmlformats-officedocument.presentationml.presentation")),
                 ],
             )
+        self.assertEqual(400, response.status_code)
+        self.assertIn("先通过", response.json()["detail"])
+
+    def test_template_analysis_is_an_independent_job(self) -> None:
+        with TestClient(web_app.app) as client:
+            response = client.post(
+                "/api/templates/analyze",
+                files=[("ppt_template", ("academic.pptx", b"pptx-template", "application/vnd.openxmlformats-officedocument.presentationml.presentation"))],
+            )
         self.assertEqual(202, response.status_code)
-        state = json.loads((web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8"))
-        template = Path(state["template_path"])
-        self.assertEqual(b"pptx-template", template.read_bytes())
-        self.assertEqual("template", template.parent.name)
-        saved = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY / "academic.pptx"
-        self.assertEqual(b"pptx-template", saved.read_bytes())
+        state = json.loads(
+            (web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("template-analysis", state["task"])
+        self.assertEqual("academic.pptx", state["template_library_item"])
+        self.assertEqual("模板载入：academic", state["title"])
 
     def test_slides_can_copy_existing_template_library_item(self) -> None:
         library = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY
         library.mkdir(parents=True)
         (library / "reusable.pptx").write_bytes(b"reusable-template")
+        self.install_template_profile(library / "reusable.pptx")
         with TestClient(web_app.app) as client:
             page = client.get("/tasks/research-slides")
+            preview = client.get("/api/templates/file/reusable.pptx")
             response = client.post(
                 "/api/jobs",
                 data={"task": "research-slides", "instructions": "", "template_item": "reusable.pptx"},
                 files=[("files", ("materials/source.txt", b"source", "text/plain"))],
             )
         self.assertIn("reusable.pptx", page.text)
+        self.assertIn('class="slides-setup-grid"', page.text)
+        self.assertIn('id="template-provider"', page.text)
+        self.assertIn('id="template-model"', page.text)
+        self.assertIn('id="template-effort"', page.text)
         self.assertIn("内容 / 页面逻辑（可选）", page.text)
         self.assertIn('id="template-drop-zone"', page.text)
+        self.assertIn('id="template-pptx-viewer"', page.text)
+        self.assertEqual(200, preview.status_code)
+        self.assertEqual(b"reusable-template", preview.content)
         self.assertNotIn('name="instructions" required', page.text)
         self.assertEqual(202, response.status_code)
         state = json.loads((web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8"))
         self.assertEqual("reusable.pptx", state["template_library_item"])
         self.assertEqual(b"reusable-template", Path(state["template_path"]).read_bytes())
+        self.assertTrue(Path(state["template_profile_json"]).is_file())
+
+    def test_task_model_controls_share_usage_and_english_effort_labels(self) -> None:
+        with TestClient(web_app.app) as client:
+            paper = client.get("/tasks/paper-guide")
+            note = client.get("/tasks/research-note")
+            slides = client.get("/tasks/research-slides")
+        for page in (paper, note):
+            self.assertIn('class="standard-task-form"', page.text)
+            self.assertIn('class="standard-setup-grid"', page.text)
+            self.assertIn('class="standard-controls-column"', page.text)
+            self.assertIn('class="primary-task-submit"', page.text)
+        self.assertIn('id="template-usage"', slides.text)
+        self.assertIn('class="primary-task-submit" type="submit">生成 PPT', slides.text)
+        self.assertIn("none:'None'", slides.text)
+        self.assertIn("medium:'Medium'", slides.text)
+        self.assertIn("ultra:'Ultra'", slides.text)
+        session_controls = (
+            Path(__file__).parents[1] / "web" / "static" / "session-controls.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("none:'None'", session_controls)
+        self.assertIn("ultra:'Ultra'", session_controls)
+        self.assertNotIn("关闭思考", session_controls)
+
+    def test_loaded_profile_is_associated_by_template_filename(self) -> None:
+        library = self.root / "Inbox" / web_app.SLIDES_TEMPLATE_LIBRARY
+        library.mkdir(parents=True)
+        template = library / "changing.pptx"
+        template.write_bytes(b"version-one")
+        self.install_template_profile(template)
+        template.write_bytes(b"version-two")
+        with TestClient(web_app.app) as client:
+            response = client.post(
+                "/api/jobs",
+                data={"task": "research-slides", "template_item": template.name},
+                files=[("files", ("materials/source.txt", b"source", "text/plain"))],
+            )
+        self.assertEqual(202, response.status_code)
+        state = json.loads(
+            (web_app.settings.local_jobs / response.json()["job_id"] / "job.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(template.name, state["template_library_item"])
 
     def test_slides_prompt_uses_template_as_layout_library(self) -> None:
         root = self.make_renderable_job("slides-template-prompt", "research-slides")
@@ -326,9 +405,13 @@ class FolderUploadTests(unittest.TestCase):
         template = root / "template" / "academic.pptx"
         template.parent.mkdir()
         template.write_bytes(b"fixture")
-        job.update(template_path=str(template))
+        profile = root / "template-profile"
+        profile.mkdir()
+        job.update(template_path=str(template), template_profile_path=str(profile))
         prompt = runner_tasks._skill_prompt("research-slides", job, "", web_app.settings, "zh")
         self.assertIn("layout and visual library", prompt)
+        self.assertIn("authoritative page catalogue", prompt)
+        self.assertIn("Do not render or visually re-analyse all template pages", prompt)
         self.assertIn("remove every unused template slide", prompt)
         self.assertIn("every editable slide title", prompt)
         self.assertIn("calculation you can reproduce", prompt)

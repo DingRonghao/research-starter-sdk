@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '1.2.0-internal.1',
+    [string]$Version = '1.3.0-internal.1',
     [string]$CertificateThumbprint = '',
     [string]$TimestampUrl = 'http://timestamp.digicert.com',
     [switch]$RequireSignature
@@ -48,7 +48,7 @@ if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -F
 if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive -Force }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist (Join-Path $project 'assets\source') /XF "Research Starter.exe" config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RELEASE_WORKFLOW.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
+& robocopy $project $stage /E /XD .git .runtime .venv runtime node_modules Inbox Output tests tools tmp dist (Join-Path $project 'assets\source') /XF "Research Starter.exe" *.lnk config.local.json .gitignore .gitattributes MIGRATION_BASELINE.md MIGRATION_LOG.md RELEASE_DATA_POLICY.md RELEASE_WORKFLOW.md RESEARCH_STARTER_V0_2_CONSTRUCTION_GUIDE.md UI_UPDATE_20260912.md /R:1 /W:1 /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -gt 7) { throw "Application copy failed with robocopy exit code $LASTEXITCODE" }
 foreach ($task in @('paper-guide', 'research-note', 'research-slides')) {
     foreach ($area in @('Inbox', 'Output')) {
@@ -63,12 +63,23 @@ foreach ($task in @('paper-guide', 'research-note', 'research-slides')) {
 }
 $releaseTemplateLibrary = Join-Path $stage 'Inbox\Templates'
 New-Item -ItemType Directory -Force -Path $releaseTemplateLibrary | Out-Null
-$publicTemplateName = '高校通用学术论文汇报模板_31页_版式细化版.pptx'
+$publicTemplateName = 'Academic-Research-Presentation.pptx'
 $publicTemplateSource = Join-Path $project "Inbox\Templates\$publicTemplateName"
 if (-not (Test-Path -LiteralPath $publicTemplateSource -PathType Leaf)) {
     throw "Required public PPT template is missing: $publicTemplateSource"
 }
 Copy-Item -LiteralPath $publicTemplateSource -Destination (Join-Path $releaseTemplateLibrary $publicTemplateName)
+$publicTemplateReadme = Join-Path $project 'Inbox\Templates\README.md'
+Copy-Item -LiteralPath $publicTemplateReadme -Destination (Join-Path $releaseTemplateLibrary 'README.md')
+$publicAnalysisSource = Join-Path $project "Inbox\Templates\.research-starter-analysis\$publicTemplateName"
+foreach ($requiredProfile in @('profile.json', 'profile.md')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $publicAnalysisSource $requiredProfile) -PathType Leaf)) {
+        throw "Required public template profile is missing: $publicAnalysisSource\$requiredProfile"
+    }
+}
+$publicAnalysisDestination = Join-Path $releaseTemplateLibrary ".research-starter-analysis\$publicTemplateName"
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $publicAnalysisDestination) | Out-Null
+Copy-Item -LiteralPath $publicAnalysisSource -Destination $publicAnalysisDestination -Recurse
 & $compiler /nologo /target:winexe /reference:System.Windows.Forms.dll "/win32icon:$project\assets\app-icon.ico" "/out:$stage\Research Starter.exe" $launcherSource
 if ($LASTEXITCODE -ne 0) { throw "Launcher compilation failed with exit code $LASTEXITCODE" }
 $launcher = Join-Path $stage 'Research Starter.exe'
